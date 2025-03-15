@@ -8,8 +8,21 @@ import (
 	"strings"
 
 	"github.com/mmcdole/gofeed"
+	"github.com/pterm/pterm"
 	"github.com/racingmars/go3270"
 )
+
+func init() {
+	// put the go3270 library in debug mode
+	//go3270.Debug = os.Stderr
+	// Set up pterm with a funky theme
+	pterm.DefaultSection.Style = pterm.NewStyle(pterm.FgCyan, pterm.Bold)
+	pterm.Info.Prefix = pterm.Prefix{Text: "INFO", Style: pterm.NewStyle(pterm.BgBlue, pterm.FgWhite)}
+	pterm.Error.Prefix = pterm.Prefix{Text: "ERROR", Style: pterm.NewStyle(pterm.BgRed, pterm.FgWhite)}
+	pterm.Success.Prefix = pterm.Prefix{Text: "SUCCESS", Style: pterm.NewStyle(pterm.BgGreen, pterm.FgBlack)}
+	pterm.Warning.Prefix = pterm.Prefix{Text: "WARNING", Style: pterm.NewStyle(pterm.BgYellow, pterm.FgBlack)}
+
+}
 
 // Predefined feed URLs
 const (
@@ -140,7 +153,7 @@ func displayDetails(conn net.Conn, item *gofeed.Item) {
 	for {
 		response, err := go3270.ShowScreen(detailsScreen, nil, 0, 0, conn)
 		if err != nil {
-			fmt.Println("Error waiting for user action:", err)
+			pterm.Error.Printf("Error waiting for user action: %v", err)
 			return
 		}
 		if response.AID == go3270.AIDPF3 {
@@ -159,7 +172,7 @@ func handle(conn net.Conn) {
 	for {
 		response, err := go3270.ShowScreen(feedSelectionScreen, nil, 10, 9, conn)
 		if err != nil {
-			fmt.Println("Error displaying feed selection screen:", err)
+			pterm.Error.Printf("Error displaying feed selection screen: %v", err)
 			return
 		}
 
@@ -187,7 +200,7 @@ func handle(conn net.Conn) {
 
 			items, err = fetchRSSFeed(feedURL)
 			if err != nil {
-				fmt.Println("Error fetching RSS feed:", err)
+				pterm.Error.Printf("Error fetching RSS feed: %v", err)
 				continue
 			}
 
@@ -195,7 +208,7 @@ func handle(conn net.Conn) {
 			for {
 				selection, err := displayHeadlines(conn, items)
 				if err != nil {
-					fmt.Println("Error displaying headlines:", err)
+					pterm.Error.Printf("Error displaying headlines: %v", err)
 					break
 				}
 
@@ -205,7 +218,7 @@ func handle(conn net.Conn) {
 
 				selectedIndex, err := strconv.Atoi(selection)
 				if err != nil || selectedIndex < 1 || selectedIndex > len(items) {
-					fmt.Println("Invalid selection. Please try again.")
+					pterm.Error.Printf("Invalid selection. Please try again.")
 					continue
 				}
 
@@ -223,18 +236,18 @@ func RunApplication(port int) {
 	address := fmt.Sprintf(":%d", port)
 	ln, err := net.Listen("tcp", address)
 	if err != nil {
-		fmt.Println("Error starting server:", err)
+		pterm.Error.Printf("Error starting server: %v", err)
 		os.Exit(1)
 	}
 	defer ln.Close()
 
-	fmt.Printf("Listening on port %d for connections\n", port)
-	fmt.Println("Press Ctrl-C to end server.")
+	pterm.Info.Printf("Listening on port %d for connections\n", port)
+	pterm.Info.Printf("Press Ctrl-C to end server.")
 
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			fmt.Println("Error accepting connection:", err)
+			pterm.Error.Printf("Error accepting connection: %v", err)
 			continue
 		}
 		go handle(conn)

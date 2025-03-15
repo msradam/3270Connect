@@ -7,6 +7,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
   <style>
     body { padding-top: 70px; padding-bottom: 70px; color: black; }
     .chart-container { margin: auto; height: 400px; width: 600px; }
@@ -15,7 +16,10 @@
 <body>
   <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
     <div class="container">
-      <a class="navbar-brand" href="#">3270Connect</a>
+      <a class="navbar-brand" href="#">
+        <img src="/templates/logo.png" alt="3270Connect Logo" width="30" height="30" class="d-inline-block align-top">
+        3270Connect
+      </a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
         <span class="navbar-toggler-icon"></span>
       </button>
@@ -105,31 +109,32 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
-          <div id="pidParamsContainer" class="mb-3"></div>
+          <div id="pidParamsContainer" class="mb-3 p-3 bg-light border rounded"></div>
           <div class="mb-3">
             <label for="pidFilter" class="form-label">Filter by PID</label>
             <select id="pidFilter" class="form-select">
               <!-- Options will be auto populated -->
             </select>
           </div>
-          <button id="loadLogs" class="btn btn-primary mb-3">Load Logs</button>
-          <div id="logsContainer" style="max-height:300px; overflow-y:auto;">
+          <div class="mb-3 p-3 bg-dark text-success" id="logsContainer" style="max-height:400px; overflow-y:auto; font-family: 'Courier New', Courier, monospace;">
             <!-- Logs will be loaded here -->
           </div>
+            <div class="mb-3 p-3 bg-light border rounded">
           <div class="form-check form-switch">
             <input class="form-check-input" type="checkbox" id="autoRefreshLogsCheckbox">
-            <label class="form-check-label" for="autoRefreshLogsCheckbox">Auto Refresh Logs</label>
+            <label class="form-check-label" for="autoRefreshLogsCheckbox">Auto Refresh</label>
           </div>
-          <div class="mt-2">
-            <label for="logsRefreshInterval" class="form-label">Refresh Interval (seconds):</label>
-            <select class="form-select w-auto" id="logsRefreshInterval">
-              <option value="1">1</option>
-              <option value="5">5</option>
-              <option value="10">10</option>
-              <option value="15">15</option>
-              <option value="30">30</option>
-            </select>
-          </div>
+            <div class="mt-2">
+              <label for="logsRefreshInterval" class="form-label">Refresh Interval (seconds):</label>
+              <select class="form-select w-auto" id="logsRefreshInterval">
+                <option value="1">1</option>
+                <option value="5">5</option>
+                <option value="10">10</option>
+                <option value="15">15</option>
+                <option value="30">30</option>
+              </select>
+            </div>
+            </div>
         </div>
       </div>
     </div>
@@ -140,182 +145,196 @@
     </div>
   </footer>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-  <script>
-    var autoRefreshEnabled = {{.AutoRefreshEnabled}};
-    var refreshPeriod = {{.RefreshPeriod}};
-    var refreshIntervalId = null;
-    function startAutoRefresh() {
-      if (autoRefreshEnabled && !refreshIntervalId) {
-        refreshIntervalId = setInterval(function() { window.location.reload(); }, parseInt(refreshPeriod) * 1000);
-        console.log("Auto refresh started");
-      }
+<script>
+  var autoRefreshEnabled = {{.AutoRefreshEnabled}};
+  var refreshPeriod = {{.RefreshPeriod}};
+  var refreshIntervalId = null;
+  function startAutoRefresh() {
+    if (autoRefreshEnabled && !refreshIntervalId) {
+      refreshIntervalId = setInterval(function() { window.location.reload(); }, parseInt(refreshPeriod) * 1000);
+      console.log("Auto refresh started");
     }
-    function stopAutoRefresh() {
-      if (refreshIntervalId) { clearInterval(refreshIntervalId); refreshIntervalId = null; console.log("Auto refresh paused"); }
-    }
-    startAutoRefresh();
-    document.addEventListener('DOMContentLoaded', function() {
-      var metricsData = JSON.parse('{{.MetricsJSON}}');
-      var maxCount = 0;
-      metricsData.forEach(function(metric) { if (metric.durations && metric.durations.length > maxCount) { maxCount = metric.durations.length; } });
-      var labels = [];
-      for (var i = 0; i < maxCount; i++) { labels.push((i + 1)); }
-      var colors = ['rgba(75, 192, 192, 1)', 'rgba(192, 75, 192, 1)', 'rgba(192, 192, 75, 1)', 'rgba(75, 75, 192, 1)', 'rgba(192, 75, 75, 1)'];
-      var datasets = [];
-      metricsData.forEach(function(metric, index) {
-        var data = new Array(maxCount - metric.durations.length).fill(null).concat(metric.durations);
-        datasets.push({
-          label: "PID " + metric.pid,
-          data: data,
-          borderColor: colors[index % colors.length],
-          backgroundColor: colors[index % colors.length].replace("1)", "0.2)"),
-          fill: false,
-          tension: 0.1
-        });
-      });
-      var ctx1 = document.getElementById("durationChart").getContext("2d");
-      new Chart(ctx1, {
-        type: "line",
-        data: { labels: labels, datasets: datasets },
-        options: {
-          animation: { duration: 0 },
-          scales: { y: { beginAtZero: true, title: { display: true, text: "Duration (seconds)" } }, x: { type: 'linear', position: 'bottom' } },
-          plugins: { zoom: { pan: { enabled: true, mode: 'x', speed: 10, threshold: 10 }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } } }
-        }
-      });
-      var aggregatedCPU = [];
-      var cpuCount = [];
-      metricsData.forEach(function(metric) {
-        if (metric.cpuUsage) {
-          metric.cpuUsage.forEach(function(val, i) {
-            if (typeof aggregatedCPU[i] === 'undefined') { aggregatedCPU[i] = 0; cpuCount[i] = 0; }
-            aggregatedCPU[i] += val; cpuCount[i] += 1;
-          });
-        }
-      });
-      for (var i = 0; i < aggregatedCPU.length; i++) { aggregatedCPU[i] = aggregatedCPU[i] / cpuCount[i]; }
-      var hostMemory = [];
-      if (metricsData.length > 0) {
-        var hostMetric = metricsData[0];
-        metricsData.forEach(function(m) { if (m.pid < hostMetric.pid) { hostMetric = m; } });
-        hostMemory = hostMetric.memoryUsage || [];
-      }
-      var maxLen = Math.max(aggregatedCPU.length, hostMemory.length);
-      var labels2 = [];
-      for (var i = 0; i < maxLen; i++) { labels2.push(" " + (i + 1)); }
-      var cpuMemDatasets = [{
-        label: "Total CPU Usage",
-        data: new Array(maxLen - aggregatedCPU.length).fill(null).concat(aggregatedCPU),
-        borderColor: "rgba(75, 192, 192, 1)",
-        backgroundColor: "rgba(75, 192, 192, 0.2)",
-        fill: false
-      },
-      {
-        label: "Total Memory Usage",
-        data: new Array(maxLen - hostMemory.length).fill(null).concat(hostMemory),
-        borderColor: "rgba(192, 75, 75, 1)",
-        backgroundColor: "rgba(192, 75, 75, 0.2)",
-        fill: false
-      }];
-      var ctx2 = document.getElementById("cpuMemChart").getContext("2d");
-      new Chart(ctx2, {
-        type: "line",
-        data: { labels: labels2, datasets: cpuMemDatasets },
-        options: {
-          animation: { duration: 0 },
-          scales: {
-            x: { beginAtZero: true, title: { display: true, text: "Duration (seconds)" }, type: 'linear', position: 'bottom' },
-            y: { beginAtZero: true, title: { display: true, text: "Percentage" } },
-          },
-          plugins: { zoom: { pan: { enabled: true, mode: 'x', speed: 10, threshold: 10 }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } } }
-        }
-      });
-      var pidSelect = document.getElementById("pidFilter");
-      var optionAll = document.createElement("option");
-      optionAll.value = "";
-      optionAll.text = "All PIDs";
-      pidSelect.appendChild(optionAll);
-      var uniquePIDs = [];
-      metricsData.forEach(function(metric) { if (metric.pid != null && uniquePIDs.indexOf(metric.pid) === -1) { uniquePIDs.push(metric.pid); } });
-      uniquePIDs.sort(function(a, b) { return a - b; });
-      uniquePIDs.forEach(function(pid) { var option = document.createElement("option"); option.value = pid; option.text = pid; pidSelect.appendChild(option); });
-      function loadLogs() {
-        var pid = document.getElementById("pidFilter").value;
-        var url = "/console";
-        if (pid) { url += "?pid=" + encodeURIComponent(pid); }
-        fetch(url)
-          .then(response => response.json())
-          .then(data => {
-            var container = document.getElementById("logsContainer");
-            container.innerHTML = "";
-            if (!data || data.length === 0) { container.innerHTML = "<p>No logs found.</p>"; return; }
-            const pidParamsMap = {};
-            data.forEach(function(entry) {
-              const pid = entry.pid;
-              const param = entry.parameters;
-              if (!pidParamsMap[pid]) { pidParamsMap[pid] = new Set(); }
-              pidParamsMap[pid].add(param);
-              var entryDiv = document.createElement("div");
-              entryDiv.classList.add("mb-1", "p-1", "border-bottom");
-              entryDiv.style.fontSize = "0.8rem";
-              entryDiv.style.fontFamily = "monospace";
-              var timestamp = new Date(entry.timestamp).toLocaleString();
-              entryDiv.innerHTML = "<span style='color: purple;'>"+ timestamp +"</span> | <span style='color: green;'>PID:</span> " + pid + " | <span style='color: grey;'>Log:</span> " + entry.log;
-              container.appendChild(entryDiv);
-            });
-            const containerParams = document.getElementById("pidParamsContainer");
-            containerParams.innerHTML = "";
-            let selectedPid = document.getElementById("pidFilter").value;
-            if (!selectedPid) {
-              for (const [pid, paramsSet] of Object.entries(pidParamsMap)) {
-                let paramString = Array.from(paramsSet).join(", ");
-                containerParams.innerHTML += '<h5><span class="badge bg-dark">PID: <span class="badge bg-light" style="color: black;">' + pid + '</span></span> <span class="badge bg-secondary" style="flex:1;">Params: <span class="badge bg-light" style="color: black;">' + paramString + '</span></span></h5>';
-              }
-            } else {
-              let paramsSet = pidParamsMap[selectedPid];
-              if (paramsSet) { let paramString = Array.from(paramsSet).join(", "); containerParams.innerHTML += '<h5><span class="badge bg-dark">PID: <span class="badge bg-light" style="color: black;">' + selectedPid + '</span></span> <span class="badge bg-secondary" style="flex:1;">Params: <span class="badge bg-light" style="color: black;">' + paramString + '</span></span></h5>'; }
-              else { containerParams.innerHTML = "<p>No logs found for PID " + selectedPid + ".</p>"; }
-            }
-          })
-          .catch(err => { console.error("Error loading logs:", err); });
-      }
-      document.getElementById("loadLogs").addEventListener("click", function() { loadLogs(); });
-      var consoleModal = document.getElementById("consoleModal");
-      if (consoleModal) {
-        consoleModal.addEventListener('show.bs.modal', function() { stopAutoRefresh(); loadLogs(); });
-        consoleModal.addEventListener('hidden.bs.modal', function() { startAutoRefresh(); });
-      }
-      var refreshIntervalId2 = null;
-      function startLogsAutoRefresh(interval) { if (!refreshIntervalId2) { refreshIntervalId2 = setInterval(loadLogs, interval * 1000); } }
-      function stopLogsAutoRefresh() { if (refreshIntervalId2) { clearInterval(refreshIntervalId2); refreshIntervalId2 = null; } }
-      var autoRefreshLogsCheckbox = document.getElementById("autoRefreshLogsCheckbox");
-      var refreshIntervalSelect = document.getElementById("logsRefreshInterval");
-      pidSelect.addEventListener("change", function() { loadLogs(); });
-      autoRefreshLogsCheckbox.addEventListener("change", function(){ if(this.checked) { startLogsAutoRefresh(parseInt(refreshIntervalSelect.value)); } else { stopLogsAutoRefresh(); } });
-      refreshIntervalSelect.addEventListener("change", function(){ if(autoRefreshLogsCheckbox.checked) { stopLogsAutoRefresh(); startLogsAutoRefresh(parseInt(this.value)); } });
-      // Add PID info below the graphs
-      var pidInfoContainer = document.getElementById("pidParamsContainerOnDashboard");
-      pidInfoContainer.innerHTML = "";
-      metricsData.forEach(function(metric) {
-        var avgCompletionTime = metric.durations.reduce((a, b) => a + b, 0) / metric.durations.length;
-        var pidInfoDiv = document.createElement("div");
-        pidInfoDiv.classList.add("mb-1", "p-1", "border-bottom");
-        pidInfoDiv.style.fontSize = "0.8rem";
-        pidInfoDiv.style.fontFamily = "monospace";
-        pidInfoDiv.style.whiteSpace = "nowrap";
-        pidInfoDiv.style.overflowX = "auto";
-        pidInfoDiv.innerHTML = `<span style='color: green;'>PID:</span> ${metric.pid} | <span style='color: grey;'>Active:</span> ${metric.activeWorkflows} | <span style='color: grey;'>Started:</span> ${metric.totalWorkflowsStarted} | <span style='color: grey;'>Completed:</span> ${metric.totalWorkflowsCompleted} | <span style='color: grey;'>Failed:</span> ${metric.totalWorkflowsFailed} | <span style='color: grey;'>Avg Time:</span> ${isNaN(avgCompletionTime) ? 'N/A' : avgCompletionTime.toFixed(2) + 's'} | <span style='color: grey;'>Params:</span> ${metric.params || 'N/A'} <i class='fas fa-external-link-alt' style='cursor:pointer;' onclick='openLogsModal(${metric.pid})'></i>`;
-        pidInfoContainer.appendChild(pidInfoDiv);
+  }
+  function stopAutoRefresh() {
+    if (refreshIntervalId) { clearInterval(refreshIntervalId); refreshIntervalId = null; console.log("Auto refresh paused"); }
+  }
+  startAutoRefresh();
+  document.addEventListener('DOMContentLoaded', function() {
+    var metricsData = JSON.parse('{{.MetricsJSON}}');
+    var maxCount = 0;
+    metricsData.forEach(function(metric) { if (metric.durations && metric.durations.length > maxCount) { maxCount = metric.durations.length; } });
+    var labels = [];
+    for (var i = 0; i < maxCount; i++) { labels.push((i + 1)); }
+    var colors = ['rgba(75, 192, 192, 1)', 'rgba(192, 75, 192, 1)', 'rgba(192, 192, 75, 1)', 'rgba(75, 75, 192, 1)', 'rgba(192, 75, 75, 1)'];
+    var datasets = [];
+    metricsData.forEach(function(metric, index) {
+      var data = new Array(maxCount - metric.durations.length).fill(null).concat(metric.durations);
+      datasets.push({
+        label: "PID " + metric.pid,
+        data: data,
+        borderColor: colors[index % colors.length],
+        backgroundColor: colors[index % colors.length].replace("1)", "0.2)"),
+        fill: false,
+        tension: 0.1
       });
     });
-
-    function openLogsModal(pid) {
-      var pidFilter = document.getElementById("pidFilter");
-      pidFilter.value = pid;
-      var consoleModal = new bootstrap.Modal(document.getElementById("consoleModal"));
-      consoleModal.show();
-      loadLogs();
+    var ctx1 = document.getElementById("durationChart").getContext("2d");
+    new Chart(ctx1, {
+      type: "line",
+      data: { labels: labels, datasets: datasets },
+      options: {
+        animation: { duration: 0 },
+        scales: { y: { beginAtZero: true, title: { display: true, text: "Duration (seconds)" } }, x: { type: 'linear', position: 'bottom' } },
+        plugins: { zoom: { pan: { enabled: true, mode: 'x', speed: 10, threshold: 10 }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } } }
+      }
+    });
+    var aggregatedCPU = [];
+    var cpuCount = [];
+    metricsData.forEach(function(metric) {
+      if (metric.cpuUsage) {
+        metric.cpuUsage.forEach(function(val, i) {
+          if (typeof aggregatedCPU[i] === 'undefined') { aggregatedCPU[i] = 0; cpuCount[i] = 0; }
+          aggregatedCPU[i] += val; cpuCount[i] += 1;
+        });
+      }
+    });
+    for (var i = 0; i < aggregatedCPU.length; i++) { aggregatedCPU[i] = aggregatedCPU[i] / cpuCount[i]; }
+    var hostMemory = [];
+    if (metricsData.length > 0) {
+      var hostMetric = metricsData[0];
+      metricsData.forEach(function(m) { if (m.pid < hostMetric.pid) { hostMetric = m; } });
+      hostMemory = hostMetric.memoryUsage || [];
     }
+    var maxLen = Math.max(aggregatedCPU.length, hostMemory.length);
+    var labels2 = [];
+    for (var i = 0; i < maxLen; i++) { labels2.push(" " + (i + 1)); }
+    var cpuMemDatasets = [{
+      label: "Total CPU Usage",
+      data: new Array(maxLen - aggregatedCPU.length).fill(null).concat(aggregatedCPU),
+      borderColor: "rgba(75, 192, 192, 1)",
+      backgroundColor: "rgba(75, 192, 192, 0.2)",
+      fill: false
+    },
+    {
+      label: "Total Memory Usage",
+      data: new Array(maxLen - hostMemory.length).fill(null).concat(hostMemory),
+      borderColor: "rgba(192, 75, 75, 1)",
+      backgroundColor: "rgba(192, 75, 75, 0.2)",
+      fill: false
+    }];
+    var ctx2 = document.getElementById("cpuMemChart").getContext("2d");
+    new Chart(ctx2, {
+      type: "line",
+      data: { labels: labels2, datasets: cpuMemDatasets },
+      options: {
+        animation: { duration: 0 },
+        scales: {
+          x: { beginAtZero: true, title: { display: true, text: "Duration (seconds)" }, type: 'linear', position: 'bottom' },
+          y: { beginAtZero: true, title: { display: true, text: "Percentage" } },
+        },
+        plugins: { zoom: { pan: { enabled: true, mode: 'x', speed: 10, threshold: 10 }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } } }
+      }
+    });
+    var pidSelect = document.getElementById("pidFilter");
+    var optionAll = document.createElement("option");
+    optionAll.value = "";
+    optionAll.text = "All PIDs";
+    pidSelect.appendChild(optionAll);
+    var uniquePIDs = [];
+    metricsData.forEach(function(metric) { if (metric.pid != null && uniquePIDs.indexOf(metric.pid) === -1) { uniquePIDs.push(metric.pid); } });
+    uniquePIDs.sort(function(a, b) { return a - b; });
+    uniquePIDs.forEach(function(pid) { var option = document.createElement("option"); option.value = pid; option.text = pid; pidSelect.appendChild(option); });
+    function loadLogs() {
+      var pid = document.getElementById("pidFilter").value;
+      var url = "/console";
+      if (pid) { url += "?pid=" + encodeURIComponent(pid); }
+      fetch(url)
+        .then(response => response.json())
+        .then(data => {
+          var container = document.getElementById("logsContainer");
+          container.innerHTML = "";
+          if (!data || data.length === 0) { container.innerHTML = "<p>No logs found.</p>"; return; }
+            const pidParamsMap = {};
+            data.forEach(function(entry) {
+            const pid = entry.pid;
+            const param = entry.parameters;
+            if (!pidParamsMap[pid]) { pidParamsMap[pid] = new Set(); }
+            pidParamsMap[pid].add(param);
+            var entryDiv = document.createElement("div");
+            entryDiv.classList.add("d-flex", "justify-content-between", "mb-1", "p-1");
+            entryDiv.style.fontSize = "0.8rem";
+            entryDiv.style.fontFamily = "monospace";
+            entryDiv.style.position = "static";
+            var timestamp = new Date(entry.timestamp).toLocaleTimeString();
+            entryDiv.innerHTML = "<span style='color: #00FF00; margin-right: 10px;'>" + timestamp + "</span>" +
+                 "<span style='color: #00FF00; margin-right: 20px;'>PID: " + pid + "</span>" +
+                 "<span style='color: white;'>Log: " + entry.log + "</span>";
+            container.appendChild(entryDiv);
+          });
+          const containerParams = document.getElementById("pidParamsContainer");
+          containerParams.innerHTML = "";
+          let selectedPid = document.getElementById("pidFilter").value;
+          if (!selectedPid) {
+            for (const [pid, paramsSet] of Object.entries(pidParamsMap)) {
+              let paramString = Array.from(paramsSet).join(", ");
+              containerParams.innerHTML += '<h5><span class="badge bg-dark">PID: <span class="badge bg-light" style="color: black;">' + pid + '</span></span> <span class="badge bg-secondary" style="flex:1;">Params: <span class="badge bg-light" style="color: black;">' + paramString + '</span></span></h5>';
+            }
+          } else {
+            let paramsSet = pidParamsMap[selectedPid];
+            if (paramsSet) { let paramString = Array.from(paramsSet).join(", "); containerParams.innerHTML += '<h5><span class="badge bg-dark">PID: <span class="badge bg-light" style="color: black;">' + selectedPid + '</span></span> <span class="badge bg-secondary" style="flex:1;">Params: <span class="badge bg-light" style="color: black;">' + paramString + '</span></span></h5>'; }
+            else { containerParams.innerHTML = "<p>No logs found for PID " + selectedPid + ".</p>"; }
+          }
+        })
+        .catch(err => { console.error("Error loading logs:", err); });
+    }
+    var loadLogsButton = document.getElementById("loadLogs");
+    if (loadLogsButton) {
+      loadLogsButton.addEventListener("click", function() { loadLogs(); });
+    }
+    var consoleModal = document.getElementById("consoleModal");
+    if (consoleModal) {
+      consoleModal.addEventListener('show.bs.modal', function() { stopAutoRefresh(); loadLogs(); });
+      consoleModal.addEventListener('hidden.bs.modal', function() { startAutoRefresh(); });
+    }
+    var refreshIntervalId2 = null;
+    function startLogsAutoRefresh(interval) { if (!refreshIntervalId2) { refreshIntervalId2 = setInterval(loadLogs, interval * 1000); } }
+    function stopLogsAutoRefresh() { if (refreshIntervalId2) { clearInterval(refreshIntervalId2); refreshIntervalId2 = null; } }
+    var autoRefreshLogsCheckbox = document.getElementById("autoRefreshLogsCheckbox");
+    var refreshIntervalSelect = document.getElementById("logsRefreshInterval");
+    pidSelect.addEventListener("change", function() { loadLogs(); });
+    autoRefreshLogsCheckbox.addEventListener("change", function(){ if(this.checked) { startLogsAutoRefresh(parseInt(refreshIntervalSelect.value)); } else { stopLogsAutoRefresh(); } });
+    refreshIntervalSelect.addEventListener("change", function(){ if(autoRefreshLogsCheckbox.checked) { stopLogsAutoRefresh(); startLogsAutoRefresh(parseInt(this.value)); } });
+    // Add PID info below the graphs
+    var pidInfoContainer = document.getElementById("pidParamsContainerOnDashboard");
+    pidInfoContainer.innerHTML = "";
+    metricsData.forEach(function(metric) {
+      var avgCompletionTime = metric.durations.reduce((a, b) => a + b, 0) / metric.durations.length;
+      var pidInfoDiv = document.createElement("div");
+      pidInfoDiv.classList.add("mb-1", "p-1", "border-bottom", "d-flex", "justify-content-between");
+      pidInfoDiv.style.fontSize = "0.8rem";
+      pidInfoDiv.style.fontFamily = "monospace";
+      pidInfoDiv.style.whiteSpace = "nowrap";
+      pidInfoDiv.style.overflowX = "auto";
+      pidInfoDiv.innerHTML = `<span style='color: green; width: 10%;'>PID: ${metric.pid}</span>` +
+                 `<span style='color: grey; width: 10%;'>Active: ${metric.activeWorkflows}</span>` +
+                 `<span style='color: grey; width: 10%;'>Started: ${metric.totalWorkflowsStarted}</span>` +
+                 `<span style='color: grey; width: 10%;'>Completed: ${metric.totalWorkflowsCompleted}</span>` +
+                 `<span style='color: grey; width: 10%;'>Failed: ${metric.totalWorkflowsFailed}</span>` +
+                 `<span style='color: grey; width: 10%;'>Avg Time: ${isNaN(avgCompletionTime) ? 'N/A' : avgCompletionTime.toFixed(2) + 's'}</span>` +
+                 `<span style='color: grey; width: 30%;'>Params: ${metric.params || 'N/A'}</span>` +
+                 `<i class='fa-solid fa-file-alt' style='cursor:pointer; margin-left:auto;' onclick='openLogsModal(${metric.pid})'></i>`;
+      pidInfoContainer.appendChild(pidInfoDiv);
+    });
+  });
+
+  function openLogsModal(pid) {
+    var pidFilter = document.getElementById("pidFilter");
+    pidFilter.value = pid;
+    var consoleModal = new bootstrap.Modal(document.getElementById("consoleModal"));
+    consoleModal.show();
+    loadLogs();
+  }
+</script>
   </script>
 </body>
 </html>

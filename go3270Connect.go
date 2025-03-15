@@ -24,20 +24,13 @@ import (
 	app2 "github.com/3270io/3270Connect/sampleapps/app2"
 
 	"github.com/gin-gonic/gin"
+	"github.com/pterm/pterm"
+	"github.com/pterm/pterm/putils"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/mem"
-	"github.com/sirupsen/logrus"
 )
 
 const version = "1.3"
-
-var log = logrus.New()
-
-func init() {
-	log.SetFormatter(&logrus.TextFormatter{})
-	log.SetOutput(os.Stdout)
-	log.SetLevel(logrus.InfoLevel)
-}
 
 // Configuration holds the settings for the terminal connection and the steps to be executed.
 type Configuration struct {
@@ -45,7 +38,7 @@ type Configuration struct {
 	Port            int
 	OutputFilePath  string `json:"OutputFilePath"`
 	Steps           []Step
-	InputFilePath   string  `json:"InputFilePath"` // New field for the input file path
+	InputFilePath   string  `json:"InputFilePath"`
 	RampUpBatchSize int     `json:"RampUpBatchSize"`
 	RampUpDelay     float64 `json:"RampUpDelay"`
 }
@@ -53,7 +46,7 @@ type Configuration struct {
 // Step represents an individual action to be taken on the terminal.
 type Step struct {
 	Type        string
-	Coordinates connect3270.Coordinates // Use go3270 package's Coordinates type
+	Coordinates connect3270.Coordinates
 	Text        string
 }
 
@@ -63,12 +56,12 @@ var (
 	runAPI          bool
 	apiPort         int
 	concurrent      int
-	headless        bool // Run go3270 in headless mode
+	headless        bool
 	verbose         bool
 	runApp          string
-	runtimeDuration int // Duration to run workflows (only used in concurrent mode)
-	lastUsedPort    int // Will be set from startPort flag
-	startPort       int // Starting port for workflow connections
+	runtimeDuration int
+	lastUsedPort    int
+	startPort       int
 )
 
 var dashboardStarted bool
@@ -78,17 +71,14 @@ var totalWorkflowsStarted int64
 var totalWorkflowsCompleted int64
 var totalWorkflowsFailed int64
 
-// Flag for the dashboard port.
 var dashboardPort int
 
 var activeWorkflows int
 var mutex sync.Mutex
 
-// Global variables for workflow durations.
 var timingsMutex sync.Mutex
 var workflowDurations []float64
 
-// Global variables for host-wide CPU and memory usage history.
 var cpuHistory []float64
 var memHistory []float64
 
@@ -96,48 +86,15 @@ var showVersion = flag.Bool("version", false, "Show the application version")
 
 var runAppPort int
 
-// Add a struct and slice for storing logs in memory.
 type LogEntry struct {
 	PID        string    `json:"pid"`
 	Parameters string    `json:"parameters"`
 	Log        string    `json:"log"`
-	Timestamp  time.Time `json:"timestamp"` // new field
+	Timestamp  time.Time `json:"timestamp"`
 }
 
 var inMemoryLogs []LogEntry
 var logMutex sync.Mutex
-
-func storeLog(message string) {
-	logMutex.Lock()
-	defer logMutex.Unlock()
-	pid := os.Getpid()
-
-	// Get the entire command-line arguments except the program name
-	args := os.Args[1:]
-	parameters := strings.Join(args, " ")
-
-	logEntry := LogEntry{
-		PID:        strconv.Itoa(pid),
-		Parameters: parameters,
-		Log:        message,
-		Timestamp:  time.Now(),
-	}
-	inMemoryLogs = append(inMemoryLogs, logEntry)
-
-	// Save log entry to disk
-	logFilePath := filepath.Join("logs", fmt.Sprintf("logs_%d.json", pid))
-	file, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Printf("Error opening log file: %v", err)
-		return
-	}
-	defer file.Close()
-
-	encoder := json.NewEncoder(file)
-	if err := encoder.Encode(logEntry); err != nil {
-		log.Printf("Error encoding log entry: %v", err)
-	}
-}
 
 //go:embed templates/dashboard.gohtml
 var dashboardTemplateFS embed.FS
@@ -152,33 +109,78 @@ func init() {
 	flag.IntVar(&concurrent, "concurrent", 1, "Number of concurrent workflows")
 	flag.BoolVar(&headless, "headless", false, "Run go3270 in headless mode")
 	flag.BoolVar(&verbose, "verbose", false, "Run go3270 in verbose mode")
-	flag.IntVar(&runtimeDuration, "runtime", 0, "Duration to run workflows in seconds. Only used in concurrent mode.")
-	flag.StringVar(&runApp, "runApp", "", "Select which sample 3270 application to run (e.g., '1' for app1, '2' for app2)")
-	flag.IntVar(&runAppPort, "runApp-port", 3270, "Port for the sample 3270 application (default 3270)")
-	flag.IntVar(&startPort, "startPort", 5000, "Starting port number for workflow connections")
+	flag.IntVar(&runtimeDuration, "runtime", 0, "Duration to run workflows in seconds")
+	flag.StringVar(&runApp, "runApp", "", "Select which sample 3270 app to run ('1' or '2')")
+	flag.IntVar(&runAppPort, "runApp-port", 3270, "Port for the sample 3270 app")
+	flag.IntVar(&startPort, "startPort", 5000, "Starting port for workflow connections")
 	flag.IntVar(&dashboardPort, "dashboardPort", 9200, "Port for the dashboard server")
 
-	// Create logs directory if it doesn't exist
+	// Set up pterm with a funky theme
+	pterm.DefaultSection.Style = pterm.NewStyle(pterm.FgCyan, pterm.Bold)
+	pterm.Info.Prefix = pterm.Prefix{Text: "INFO", Style: pterm.NewStyle(pterm.BgBlue, pterm.FgWhite)}
+	pterm.Error.Prefix = pterm.Prefix{Text: "ERROR", Style: pterm.NewStyle(pterm.BgRed, pterm.FgWhite)}
+	pterm.Success.Prefix = pterm.Prefix{Text: "SUCCESS", Style: pterm.NewStyle(pterm.BgGreen, pterm.FgBlack)}
+	pterm.Warning.Prefix = pterm.Prefix{Text: "WARNING", Style: pterm.NewStyle(pterm.BgYellow, pterm.FgBlack)}
+
 	if err := os.MkdirAll("logs", 0755); err != nil {
-		handleError(err, "Error creating logs directory")
+		pterm.Error.Println("Failed to create logs dir - universe says no:", err)
 	}
 
 	var err error
 	dashboardTemplate, err = template.ParseFS(dashboardTemplateFS, "templates/dashboard.gohtml")
-	handleError(err, "Error parsing dashboard template")
+	if err != nil {
+		pterm.Error.Println("Dashboard template parsing went kaput:", err)
+	} else {
+		//pterm.Success.Println("Dashboard template loaded - ready to rock!")
+	}
+}
+
+func storeLog(message string) {
+	logMutex.Lock()
+	defer logMutex.Unlock()
+	pid := os.Getpid()
+	args := os.Args[1:]
+	parameters := strings.Join(args, " ")
+
+	logEntry := LogEntry{
+		PID:        strconv.Itoa(pid),
+		Parameters: parameters,
+		Log:        message,
+		Timestamp:  time.Now(),
+	}
+	inMemoryLogs = append(inMemoryLogs, logEntry)
+
+	logFilePath := filepath.Join("logs", fmt.Sprintf("logs_%d.json", pid))
+	file, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		pterm.Error.Println("Log file opening failed - send help:", err)
+		return
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	if err := encoder.Encode(logEntry); err != nil {
+		pterm.Error.Println("Log encoding broke - computers hate me:", err)
+	}
 }
 
 func loadConfiguration(filePath string) *Configuration {
+	//spinner, _ := pterm.DefaultSpinner.Start("Loading config - hold onto your hats!")
 	if connect3270.Verbose {
-		log.Printf("Loading configuration from %s", filePath)
+		pterm.Info.Printf("Loading configuration from %s\n", filePath)
 	}
 	configFile, err := os.Open(filePath)
-	handleError(err, fmt.Sprintf("Error opening config file at %s", filePath))
+	if err != nil {
+		pterm.Error.Printf("Error opening config file at %s: %v", filePath, err)
+		os.Exit(1)
+	}
 	defer configFile.Close()
 	var config Configuration
 	decoder := json.NewDecoder(configFile)
 	err = decoder.Decode(&config)
-	handleError(err, "Error decoding config JSON")
+	if err != nil {
+		pterm.Error.Printf("Error decoding config JSON: %v", err)
+	}
 	if config.RampUpBatchSize <= 0 {
 		config.RampUpBatchSize = 10
 	}
@@ -186,32 +188,30 @@ func loadConfiguration(filePath string) *Configuration {
 		config.RampUpDelay = 1.0
 	}
 	err = validateConfiguration(&config)
-	handleError(err, "Invalid configuration")
+	if err != nil {
+		pterm.Error.Printf("Invalid configuration: %v", err)
+	}
+	//spinner.Success("Config loaded - we’re golden!")
 	return &config
 }
 
-func handleError(err error, message string) {
-	if err != nil {
-		log.Fatalf("%s: %v", message, err)
-	}
-}
-
 func loadInputFile(filePath string) ([]Step, error) {
+	spinner, _ := pterm.DefaultSpinner.Start("Loading input file - fingers crossed!")
 	if connect3270.Verbose {
-		log.Printf("Loading input file: %s", filePath)
+		pterm.Info.Printf("Loading input file: %s\n", filePath)
 	}
 	data, err := ioutil.ReadFile(filePath)
 	if err != nil {
-		log.Printf("Error reading input file %s: %v", filePath, err)
+		spinner.Fail("Input file read failed - disk gremlins:", err)
 		return nil, fmt.Errorf("error reading input file: %v", err)
 	}
 	if connect3270.Verbose {
-		log.Printf("Successfully read input file: %d bytes", len(data))
+		pterm.Success.Printf("Successfully read input file: %d bytes\n", len(data))
 	}
 	var steps []Step
 	steps = append(steps, Step{Type: "Connect"})
 	if connect3270.Verbose {
-		log.Printf("Added initial Connect step")
+		pterm.Info.Println("Added initial Connect step")
 	}
 	lines := strings.Split(string(data), "\n")
 	for idx, line := range lines {
@@ -220,7 +220,7 @@ func loadInputFile(filePath string) ([]Step, error) {
 			continue
 		}
 		if connect3270.Verbose {
-			log.Printf("Processing line %d: %s", idx+1, line)
+			pterm.Info.Printf("Processing line %d: %s", idx+1, line)
 		}
 		if strings.HasPrefix(line, "yield ps.sendKeys") {
 			key := strings.TrimPrefix(line, "yield ps.sendKeys(")
@@ -286,7 +286,7 @@ func loadInputFile(filePath string) ([]Step, error) {
 			step := Step{Type: stepType, Text: key}
 			steps = append(steps, step)
 			if connect3270.Verbose {
-				log.Printf("Added step: %s with text: %s", stepType, key)
+				pterm.Info.Printf("Added step: %s with text: %s\n", stepType, key)
 			}
 		} else if strings.HasPrefix(line, "yield wait.forText") {
 			parts := strings.Split(line, ",")
@@ -301,7 +301,7 @@ func loadInputFile(filePath string) ([]Step, error) {
 					column, errCol := strconv.Atoi(strings.TrimSpace(posParts[1]))
 					if errRow != nil || errCol != nil {
 						if connect3270.Verbose {
-							log.Printf("Error parsing position values in line %d: row or column conversion error", idx+1)
+							pterm.Warning.Printf("Error parsing position in line %d - numbers hate me\n", idx+1)
 						}
 						continue
 					}
@@ -316,7 +316,7 @@ func loadInputFile(filePath string) ([]Step, error) {
 					}
 					steps = append(steps, step)
 					if connect3270.Verbose {
-						log.Printf("Added CheckValue step: text '%s' at position (%d,%d), length %d", text, row, column, len(text))
+						pterm.Info.Printf("Added CheckValue step: text '%s' at (%d,%d), length %d\n", text, row, column, len(text))
 					}
 				}
 			}
@@ -327,7 +327,7 @@ func loadInputFile(filePath string) ([]Step, error) {
 				column, errCol := strconv.Atoi(parts[9])
 				if errRow != nil || errCol != nil {
 					if connect3270.Verbose {
-						log.Printf("Error parsing coordinates in line %d: row or column conversion error", idx+1)
+						pterm.Warning.Printf("Error parsing coords in line %d - math is hard\n", idx+1)
 					}
 					continue
 				}
@@ -347,25 +347,27 @@ func loadInputFile(filePath string) ([]Step, error) {
 						}
 						steps = append(steps, step)
 						if connect3270.Verbose {
-							log.Printf("Added FillString step: text '%s' at position (%d,%d)", key, row, column)
+							pterm.Info.Printf("Added FillString step: text '%s' at (%d,%d)\n", key, row, column)
 						}
 					}
 				}
 			}
 		}
 	}
-
 	steps = append(steps, Step{Type: "Disconnect"})
 	if connect3270.Verbose {
-		log.Printf("Added final Disconnect step")
-	}
-	if connect3270.Verbose {
-		log.Println("Workflow steps loaded:")
-		for index, step := range steps {
-			log.Printf("Step %d: Type: %s, Text: '%s', Coordinates: {Row: %d, Column: %d, Length: %d}",
-				index, step.Type, step.Text, step.Coordinates.Row, step.Coordinates.Column, step.Coordinates.Length)
+		pterm.Info.Println("Added final Disconnect step")
+		pterm.DefaultTable.WithHasHeader().WithData(pterm.TableData{
+			{"Step", "Type", "Text", "Row", "Column", "Length"},
+			{"", "", "", "", "", ""}, // Separator
+		}).Render()
+		for i, step := range steps {
+			pterm.DefaultTable.WithData(pterm.TableData{
+				{strconv.Itoa(i), step.Type, step.Text, strconv.Itoa(step.Coordinates.Row), strconv.Itoa(step.Coordinates.Column), strconv.Itoa(step.Coordinates.Length)},
+			}).Render()
 		}
 	}
+	spinner.Success("Input file loaded - we’re cooking with gas!")
 	return steps, nil
 }
 
@@ -373,16 +375,16 @@ func runWorkflow(scriptPort int, config *Configuration) error {
 	startTime := time.Now()
 	atomic.AddInt64(&totalWorkflowsStarted, 1)
 	if connect3270.Verbose {
-		log.Printf("Starting workflow for scriptPort %d", scriptPort)
+		pterm.Info.Printf("Starting workflow for scriptPort %d\n", scriptPort)
 	}
-	storeLog((fmt.Sprintf("Starting workflow for scriptPort %d", scriptPort)))
+	storeLog(fmt.Sprintf("Starting workflow for scriptPort %d", scriptPort))
 	mutex.Lock()
 	activeWorkflows++
 	mutex.Unlock()
 	e := connect3270.NewEmulator(config.Host, config.Port, strconv.Itoa(scriptPort))
 	tmpFile, err := ioutil.TempFile("", "workflowOutput_")
 	if err != nil {
-		log.Printf("Error creating temporary file: %v", err)
+		pterm.Error.Printf("Temp file creation failed - disk’s playing hide and seek: %v", err)
 		return err
 	}
 	tmpFileName := tmpFile.Name()
@@ -393,7 +395,7 @@ func runWorkflow(scriptPort int, config *Configuration) error {
 	if config.InputFilePath != "" {
 		steps, err = loadInputFile(config.InputFilePath)
 		if err != nil {
-			log.Printf("Error loading input file: %v", err)
+			pterm.Error.Printf("Input file load crashed - file has gone rogue: %v\n", err)
 			return err
 		}
 	} else {
@@ -407,176 +409,177 @@ func runWorkflow(scriptPort int, config *Configuration) error {
 		case "InitializeOutput":
 			err := e.InitializeOutput(tmpFileName, runAPI)
 			if err != nil {
-				return fmt.Errorf("error initializing output file: %v", err)
+				pterm.Error.Printf("Output init failed - setup’s cursed: %v\n", err)
+				workflowFailed = true
 			}
 		case "Connect":
 			if err := e.Connect(); err != nil {
-				log.Printf("Error connecting to terminal: %v", err)
+				pterm.Error.Printf("Connection failed - terminal’s ghosting us: %v\n", err)
 				workflowFailed = true
 			}
 			e.WaitForField(30)
 		case "CheckValue":
 			v, err := e.GetValue(step.Coordinates.Row, step.Coordinates.Column, step.Coordinates.Length)
 			if err != nil {
-				log.Printf("Error getting value: %v", err)
+				pterm.Error.Printf("Value grab failed - screen’s being shy: %v\n", err)
 				workflowFailed = true
 				break
 			}
 			v = strings.TrimSpace(v)
 			if connect3270.Verbose {
-				log.Println("Retrieved value: " + v)
+				pterm.Info.Printf("Retrieved value: %s\n", v)
 			}
 			if v != step.Text {
-				log.Printf("CheckValue failed. Expected: %s, Found: %s", step.Text, v)
+				pterm.Warning.Printf("CheckValue mismatch - Expected: %s, Got: %s\n", step.Text, v)
 				workflowFailed = true
 			}
 		case "FillString":
 			if err := e.FillString(step.Coordinates.Row, step.Coordinates.Column, step.Text); err != nil {
-				log.Printf("Error setting text: %v", err)
+				pterm.Error.Printf("Text fill failed - keyboard’s drunk: %v\n", err)
 				workflowFailed = true
 			}
 		case "AsciiScreenGrab":
 			if err := e.AsciiScreenGrab(tmpFileName, runAPI); err != nil {
-				log.Printf("Error in AsciiScreenGrab: %v", err)
+				pterm.Error.Printf("Screen grab flopped - camera’s broken: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressEnter":
 			if err := e.Press(connect3270.Enter); err != nil {
-				log.Printf("Error pressing Enter: %v", err)
+				pterm.Error.Printf("Enter press failed - button’s stuck: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressTab":
 			if err := e.Press(connect3270.Tab); err != nil {
-				log.Printf("Error pressing Tab: %v", err)
+				pterm.Error.Printf("Tab press failed - spacing out: %v\n", err)
 				workflowFailed = true
 			}
 		case "Disconnect":
 			if err := e.Disconnect(); err != nil {
-				log.Printf("Error disconnecting: %v", err)
+				pterm.Error.Printf("Disconnect failed - clinging on: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressPF1":
 			if err := e.Press(connect3270.F1); err != nil {
-				log.Printf("Error pressing PF1: %v", err)
+				pterm.Error.Printf("PF1 press failed - function’s funky: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressPF2":
 			if err := e.Press(connect3270.F2); err != nil {
-				log.Printf("Error pressing PF2: %v", err)
+				pterm.Error.Printf("PF2 press failed - function’s funky: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressPF3":
 			if err := e.Press(connect3270.F3); err != nil {
-				log.Printf("Error pressing PF3: %v", err)
+				pterm.Error.Printf("PF3 press failed - function’s funky: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressPF4":
 			if err := e.Press(connect3270.F4); err != nil {
-				log.Printf("Error pressing PF4: %v", err)
+				pterm.Error.Printf("PF4 press failed - function’s funky: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressPF5":
 			if err := e.Press(connect3270.F5); err != nil {
-				log.Printf("Error pressing PF5: %v", err)
+				pterm.Error.Printf("PF5 press failed - function’s funky: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressPF6":
 			if err := e.Press(connect3270.F6); err != nil {
-				log.Printf("Error pressing PF6: %v", err)
+				pterm.Error.Printf("PF6 press failed - function’s funky: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressPF7":
 			if err := e.Press(connect3270.F7); err != nil {
-				log.Printf("Error pressing PF7: %v", err)
+				pterm.Error.Printf("PF7 press failed - function’s funky: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressPF8":
 			if err := e.Press(connect3270.F8); err != nil {
-				log.Printf("Error pressing PF8: %v", err)
+				pterm.Error.Printf("PF8 press failed - function’s funky: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressPF9":
 			if err := e.Press(connect3270.F9); err != nil {
-				log.Printf("Error pressing PF9: %v", err)
+				pterm.Error.Printf("PF9 press failed - function’s funky: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressPF10":
 			if err := e.Press(connect3270.F10); err != nil {
-				log.Printf("Error pressing PF10: %v", err)
+				pterm.Error.Printf("PF10 press failed - function’s funky: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressPF11":
 			if err := e.Press(connect3270.F11); err != nil {
-				log.Printf("Error pressing PF11: %v", err)
+				pterm.Error.Printf("PF11 press failed - function’s funky: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressPF12":
 			if err := e.Press(connect3270.F12); err != nil {
-				log.Printf("Error pressing PF12: %v", err)
+				pterm.Error.Printf("PF12 press failed - function’s funky: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressPF13":
 			if err := e.Press(connect3270.F13); err != nil {
-				log.Printf("Error pressing PF13: %v", err)
+				pterm.Error.Printf("PF13 press failed - function’s funky: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressPF14":
 			if err := e.Press(connect3270.F14); err != nil {
-				log.Printf("Error pressing PF14: %v", err)
+				pterm.Error.Printf("PF14 press failed - function’s funky: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressPF15":
 			if err := e.Press(connect3270.F15); err != nil {
-				log.Printf("Error pressing PF15: %v", err)
+				pterm.Error.Printf("PF15 press failed - function’s funky: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressPF16":
 			if err := e.Press(connect3270.F16); err != nil {
-				log.Printf("Error pressing PF16: %v", err)
+				pterm.Error.Printf("PF16 press failed - function’s funky: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressPF17":
 			if err := e.Press(connect3270.F17); err != nil {
-				log.Printf("Error pressing PF17: %v", err)
+				pterm.Error.Printf("PF17 press failed - function’s funky: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressPF18":
 			if err := e.Press(connect3270.F18); err != nil {
-				log.Printf("Error pressing PF18: %v", err)
+				pterm.Error.Printf("PF18 press failed - function’s funky: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressPF19":
 			if err := e.Press(connect3270.F19); err != nil {
-				log.Printf("Error pressing PF19: %v", err)
+				pterm.Error.Printf("PF19 press failed - function’s funky: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressPF20":
 			if err := e.Press(connect3270.F20); err != nil {
-				log.Printf("Error pressing PF20: %v", err)
+				pterm.Error.Printf("PF20 press failed - function’s funky: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressPF21":
 			if err := e.Press(connect3270.F21); err != nil {
-				log.Printf("Error pressing PF21: %v", err)
+				pterm.Error.Printf("PF21 press failed - function’s funky: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressPF22":
 			if err := e.Press(connect3270.F22); err != nil {
-				log.Printf("Error pressing PF22: %v", err)
+				pterm.Error.Printf("PF22 press failed - function’s funky: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressPF23":
 			if err := e.Press(connect3270.F23); err != nil {
-				log.Printf("Error pressing PF23: %v", err)
+				pterm.Error.Printf("PF23 press failed - function’s funky: %v\n", err)
 				workflowFailed = true
 			}
 		case "PressPF24":
 			if err := e.Press(connect3270.F24); err != nil {
-				log.Printf("Error pressing PF24: %v", err)
+				pterm.Error.Printf("PF24 press failed - function’s funky: %v\n", err)
 				workflowFailed = true
 			}
 		default:
-			log.Printf("Unknown step type: %s", step.Type)
+			pterm.Warning.Printf("Unknown step type: %s - what’s this sorcery?\n", step.Type)
 		}
 	}
 	mutex.Lock()
@@ -587,12 +590,12 @@ func runWorkflow(scriptPort int, config *Configuration) error {
 	workflowDurations = append(workflowDurations, duration)
 	timingsMutex.Unlock()
 	if workflowFailed {
-		log.Printf("Workflow for scriptPort %d failed", scriptPort)
+		pterm.Error.Printf(fmt.Sprintf("Workflow %d crashed and burned!", scriptPort))
 		storeLog(fmt.Sprintf("Workflow for scriptPort %d failed", scriptPort))
 		atomic.AddInt64(&totalWorkflowsFailed, 1)
 	} else {
 		if connect3270.Verbose {
-			log.Printf("Workflow for scriptPort %d completed successfully", scriptPort)
+			pterm.Success.Printf(fmt.Sprintf("Workflow %d nailed it!", scriptPort))
 			storeLog(fmt.Sprintf("Workflow for scriptPort %d completed successfully", scriptPort))
 		}
 		if config.OutputFilePath != "" {
@@ -601,9 +604,9 @@ func runWorkflow(scriptPort int, config *Configuration) error {
 				pid := os.Getpid()
 				uniqueOutputPath := fmt.Sprintf("%s.%d", config.OutputFilePath, pid)
 				if err2 := os.Rename(tmpFileName, uniqueOutputPath); err2 != nil {
-					log.Printf("Error renaming temporary file to unique output file: %v", err2)
+					pterm.Error.Printf("File rename to unique path failed - chaos reigns: %v\n", err2)
 				} else if verbose {
-					log.Printf("Renamed temporary file to unique output file: %s", uniqueOutputPath)
+					pterm.Info.Printf("Renamed to unique output file: %s\n", uniqueOutputPath)
 				}
 				return err
 			}
@@ -615,7 +618,7 @@ func runWorkflow(scriptPort int, config *Configuration) error {
 
 func runAPIWorkflow() {
 	if connect3270.Verbose {
-		log.Println("Starting API server mode")
+		pterm.Info.Println("Starting API server mode - buckle up!")
 	}
 	connect3270.Headless = true
 	gin.SetMode(gin.ReleaseMode)
@@ -624,13 +627,13 @@ func runAPIWorkflow() {
 	r.POST("/api/execute", func(c *gin.Context) {
 		var workflowConfig Configuration
 		if err := c.ShouldBindJSON(&workflowConfig); err != nil {
-			sendErrorResponse(c, http.StatusBadRequest, "Invalid request payload", err)
+			sendErrorResponse(c, http.StatusBadRequest, "Invalid request payload - JSON’s drunk", err)
 			return
 		}
 		tmpFile, err := ioutil.TempFile("", "workflowOutput_")
 		if err != nil {
-			log.Printf("Error creating temporary file: %v", err)
-			sendErrorResponse(c, http.StatusInternalServerError, "Failed to create temporary file", err)
+			pterm.Error.Println("Temp file creation failed - disk’s napping:", err)
+			sendErrorResponse(c, http.StatusInternalServerError, "Failed to create temp file", err)
 			return
 		}
 		defer tmpFile.Close()
@@ -639,33 +642,33 @@ func runAPIWorkflow() {
 		e := connect3270.NewEmulator(workflowConfig.Host, workflowConfig.Port, strconv.Itoa(scriptPort))
 		err = e.InitializeOutput(tmpFileName, true)
 		if err != nil {
-			sendErrorResponse(c, http.StatusInternalServerError, "Failed to initialize output file", err)
+			sendErrorResponse(c, http.StatusInternalServerError, "Output init failed - setup’s cursed", err)
 			return
 		}
 		for _, step := range workflowConfig.Steps {
 			if err := executeStep(e, step, tmpFileName); err != nil {
-				sendErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Workflow step '%s' failed", step.Type), err)
+				sendErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Step '%s' failed - oof", step.Type), err)
 				e.Disconnect()
 				return
 			}
 		}
 		outputContents, err := e.ReadOutputFile(tmpFileName)
 		if err != nil {
-			sendErrorResponse(c, http.StatusInternalServerError, "Failed to read output file", err)
+			sendErrorResponse(c, http.StatusInternalServerError, "Output read failed - file’s shy", err)
 			return
 		}
 		e.Disconnect()
 		c.JSON(http.StatusOK, gin.H{
 			"returnCode": http.StatusOK,
 			"status":     "okay",
-			"message":    "Workflow executed successfully",
+			"message":    "Workflow executed successfully - high five!",
 			"output":     outputContents,
 		})
 	})
 	apiAddr := fmt.Sprintf(":%d", apiPort)
-	log.Printf("API server is running on %s", apiAddr)
+	pterm.Success.Printf("API server rocking on %s - let’s roll!\n", apiAddr)
 	if err := r.Run(apiAddr); err != nil {
-		log.Fatalf("Failed to start API server: %v", err)
+		pterm.Error.Printf("API server crashed - send coffee: %v\n", err)
 	}
 }
 
@@ -746,7 +749,7 @@ func executeStep(e *connect3270.Emulator, step Step, tmpFileName string) error {
 
 func sendErrorResponse(c *gin.Context, statusCode int, message string, err error) {
 	if connect3270.Verbose {
-		log.Println("Starting sendErrorResponse")
+		pterm.Info.Println("Sending error response - oopsie daisy!")
 	}
 	c.JSON(statusCode, gin.H{
 		"returnCode": statusCode,
@@ -757,15 +760,22 @@ func sendErrorResponse(c *gin.Context, statusCode int, message string, err error
 }
 
 func printBanner() {
-	fmt.Println(`
-	 ____ ___ ______ ___   _____                            _
-	|___ \__ \____  / _ \ / ____|                          | |
-	  __) | ) |  / / | | | |     ___  _ __  _ __   ___  ___| |_
-	 |__ < / /  / /| | | | |    / _ \| '_ \| '_ \ / _ \/ __| __|
-	 ___) / /_ / / | |_| | |___| (_) | | | | | | |  __/ (__| |_
-	|____/____/_/   \___/ \_____\___/|_| |_|_| |_|\___|\___|\__|
 
-Version: ` + version)
+	clear()
+
+	pterm.DefaultBigText.
+		WithLetters(
+			putils.LettersFromStringWithStyle("3270", pterm.FgLightGreen.ToStyle()),
+			putils.LettersFromStringWithStyle("Connect", pterm.FgGreen.ToStyle()),
+		).
+		Render()
+
+	pterm.DefaultBasicText.Println("Version: " + pterm.LightGreen(version))
+	pterm.DefaultBasicText.Println("Website: " + pterm.LightGreen("https://3270.io"))
+	pterm.DefaultBasicText.Println("Author: " + pterm.LightGreen("EyUp"))
+
+	pterm.Info.Println("Runtime Environment: " + pterm.LightYellow("./3270Connect ") + pterm.White(strings.Join(os.Args[1:], " ")))
+	pterm.Println()
 }
 
 func main() {
@@ -775,10 +785,13 @@ func main() {
 	lastUsedPort = startPort
 	mutex.Unlock()
 	if *showVersion {
-		printVersionAndExit()
+		pterm.Info.Printf("3270Connect Version: %s \n", version)
+		os.Exit(0)
 	}
 	if showHelp {
-		printHelpAndExit()
+		pterm.Info.Printf("3270Connect Version: %s - Here’s the manual!\n", version)
+		flag.Usage()
+		os.Exit(0)
 	}
 	setGlobalSettings()
 	if concurrent > 1 || runtimeDuration > 0 {
@@ -794,7 +807,7 @@ func main() {
 			app2.RunApplication(runAppPort)
 			return
 		default:
-			log.Fatalf("Invalid runApp value: %s. Please enter a valid app number.", runApp)
+			pterm.Error.Printf("Invalid runApp value: %s - Did you mean 1 or 2?\n", runApp)
 		}
 	}
 	config := loadConfiguration(configFile)
@@ -807,22 +820,10 @@ func main() {
 			runWorkflow(7000, config)
 		}
 		if concurrent > 1 && dashboardStarted {
-			log.Printf("All workflows completed but the dashboard is still running on port %d. Press Ctrl+C to exit.", dashboardPort)
-			storeLog(fmt.Sprintf("All workflows completed but the dashboard is still running on port %d. Press Ctrl+C to exit.", dashboardPort))
-			select {}
+			pterm.Info.Printf("All workflows done, shutting down dashboard on port %d.\n", dashboardPort)
+			storeLog(fmt.Sprintf("All workflows completed, shutting down dashboard on port %d.", dashboardPort))
 		}
 	}
-}
-
-func printVersionAndExit() {
-	fmt.Printf("3270Connect Version: %s\n", version)
-	os.Exit(0)
-}
-
-func printHelpAndExit() {
-	fmt.Printf("3270Connect Version: %s\n", version)
-	flag.Usage()
-	os.Exit(0)
 }
 
 func setGlobalSettings() {
@@ -834,59 +835,234 @@ func runConcurrentWorkflows(config *Configuration) {
 	overallStart := time.Now()
 	semaphore := make(chan struct{}, concurrent)
 	var wg sync.WaitGroup
-	for time.Since(overallStart) < time.Duration(runtimeDuration)*time.Second {
-		for time.Since(overallStart) < time.Duration(runtimeDuration)*time.Second {
-			freeSlots := concurrent - len(semaphore)
-			if freeSlots <= 0 {
-				time.Sleep(time.Duration(config.RampUpDelay * float64(time.Second)))
-				break
+
+	// Initialize MultiPrinter for all output
+	multi := pterm.DefaultMultiPrinter
+
+	// Define a fixed width for titles to align text (adjusted for longest dynamic title)
+	const titleWidth = 30
+
+	// Uniform progress bars with aligned titles and consistent formatting
+	activeBar, _ := pterm.DefaultProgressbar.
+		WithTotal(concurrent).
+		WithTitle(pterm.Sprintf("%-*s", titleWidth, "Active vUsers")).
+		WithWriter(multi.NewWriter()).
+		WithBarCharacter("█").
+		WithBarStyle(pterm.NewStyle(pterm.FgCyan)).
+		WithShowPercentage(true).
+		WithShowCount(false).
+		WithShowElapsedTime(true).
+		Start()
+
+	cpuBar, _ := pterm.DefaultProgressbar.
+		WithTotal(100).
+		WithTitle(pterm.Sprintf("%-*s", titleWidth, "CPU Usage")).
+		WithWriter(multi.NewWriter()).
+		WithBarCharacter("█").
+		WithBarStyle(pterm.NewStyle(pterm.FgGreen)).
+		WithShowPercentage(true).
+		WithShowCount(false).
+		WithShowElapsedTime(true).
+		Start()
+
+	memBar, _ := pterm.DefaultProgressbar.
+		WithTotal(100).
+		WithTitle(pterm.Sprintf("%-*s", titleWidth, "Memory Usage")).
+		WithWriter(multi.NewWriter()).
+		WithBarCharacter("█").
+		WithBarStyle(pterm.NewStyle(pterm.FgGreen)).
+		WithShowPercentage(true).
+		WithShowCount(false).
+		WithShowElapsedTime(true).
+		Start()
+
+	durationBar, _ := pterm.DefaultProgressbar.
+		WithTotal(runtimeDuration).
+		WithTitle(pterm.Sprintf("%-*s", titleWidth, "Run Duration")).
+		WithWriter(multi.NewWriter()).
+		WithBarCharacter("█").
+		WithBarStyle(pterm.NewStyle(pterm.FgCyan)).
+		WithShowPercentage(true).
+		WithShowCount(false).
+		WithShowElapsedTime(true).
+		Start()
+
+	// Start the MultiPrinter
+	multi.Start()
+
+	// Main workflow loop with hard timeout
+	deadline := time.After(time.Duration(runtimeDuration) * time.Second)
+outer:
+	for {
+		select {
+		case <-deadline:
+			// Final update before exit
+			durationBar.Current = runtimeDuration
+			durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, "Run Duration (Completed)"))
+			break outer // Exit loops after runtimeDuration (25 seconds)
+		default:
+			// Update progress bars every iteration
+			elapsed := int(time.Since(overallStart).Seconds())
+			remaining := runtimeDuration - elapsed
+			if remaining < 0 {
+				remaining = 0
 			}
-			batchSize := min(freeSlots, config.RampUpBatchSize)
-			log.Printf("Increasing batch by %d, current size is %d, new total target is %d",
-				batchSize, len(semaphore), len(semaphore)+batchSize)
-			storeLog(fmt.Sprintf("Increasing batch by %d, current size is %d, new total target is %d",
-				batchSize, len(semaphore), len(semaphore)+batchSize))
-			for i := 0; i < batchSize; i++ {
-				semaphore <- struct{}{}
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					portToUse := getNextAvailablePort()
-					err := runWorkflow(portToUse, config)
-					if err != nil && connect3270.Verbose {
-						log.Printf("Workflow on port %d error: %v", portToUse, err)
-					}
-					<-semaphore
-				}()
+			durationBar.Current = elapsed
+			if elapsed < runtimeDuration {
+				durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Run Duration (%ds left)", remaining)))
+			} else {
+				durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, "Run Duration (Completed)"))
 			}
+
 			cpuPercent, _ := cpu.Percent(0, false)
 			memStats, _ := mem.VirtualMemory()
-			log.Printf("Currently active workflows: %d, CPU usage: %.2f%%, memory usage: %.2f%%",
-				len(semaphore), cpuPercent[0], memStats.UsedPercent)
-			storeLog(fmt.Sprintf("Currently active workflows: %d, CPU usage: %.2f%%, memory usage: %.2f%%",
-				len(semaphore), cpuPercent[0], memStats.UsedPercent))
-			time.Sleep(time.Duration(config.RampUpDelay * float64(time.Second)))
+			if cpuPercent[0] < 50 {
+				cpuBar.BarStyle = pterm.NewStyle(pterm.FgGreen)
+			} else if cpuPercent[0] < 80 {
+				cpuBar.BarStyle = pterm.NewStyle(pterm.FgYellow)
+			} else {
+				cpuBar.BarStyle = pterm.NewStyle(pterm.FgRed)
+			}
+			cpuBar.Current = int(cpuPercent[0])
+
+			if int(memStats.UsedPercent) < 50 {
+				memBar.BarStyle = pterm.NewStyle(pterm.FgGreen)
+			} else if int(memStats.UsedPercent) < 80 {
+				memBar.BarStyle = pterm.NewStyle(pterm.FgYellow)
+			} else {
+				memBar.BarStyle = pterm.NewStyle(pterm.FgRed)
+			}
+			memBar.Current = int(memStats.UsedPercent)
+
+			activeBar.Current = len(semaphore)
+			activeBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Active vUsers (%d/%d)", len(semaphore), concurrent)))
+			storeLog(fmt.Sprintf("Elapsed: %d, Remaining: %d, Active workflows: %d, CPU usage: %.2f%%, Memory usage: %.2f%%", elapsed, remaining, len(semaphore), cpuPercent[0], memStats.UsedPercent))
+
+			// Inner loop for workflow scheduling
+			for time.Since(overallStart) < time.Duration(runtimeDuration)*time.Second {
+				freeSlots := concurrent - len(semaphore)
+				if freeSlots <= 0 {
+					time.Sleep(time.Duration(config.RampUpDelay * float64(time.Second)))
+					break
+				}
+				batchSize := min(freeSlots, config.RampUpBatchSize)
+				storeLog(fmt.Sprintf("Increasing batch by %d, current size is %d, new total target is %d", batchSize, len(semaphore), len(semaphore)+batchSize))
+				for i := 0; i < batchSize; i++ {
+					semaphore <- struct{}{}
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+						defer func() { <-semaphore }() // Ensure semaphore is released
+						portToUse := getNextAvailablePort()
+						err := runWorkflow(portToUse, config)
+						if err != nil && connect3270.Verbose {
+							pterm.Error.Printf("Workflow on port %d went belly up: %v\n", portToUse, err)
+						}
+						activeBar.Current = len(semaphore) // Update active users when workflow ends
+					}()
+				}
+				time.Sleep(time.Duration(config.RampUpDelay * float64(time.Second)))
+			}
 		}
-		cpuPercent, _ := cpu.Percent(0, false)
-		memStats, _ := mem.VirtualMemory()
-		log.Printf("Currently active workflows: %d, CPU usage: %.2f%%, memory usage: %.2f%%",
-			len(semaphore), cpuPercent[0], memStats.UsedPercent)
-		storeLog(fmt.Sprintf("Currently active workflows: %d, CPU usage: %.2f%%, memory usage: %.2f%%",
-			len(semaphore), cpuPercent[0], memStats.UsedPercent))
-		time.Sleep(time.Duration(config.RampUpDelay * float64(time.Second)))
 	}
-	wg.Wait()
-	log.Println("All workflows completed after runtimeDuration ended.")
-	storeLog("All workflows completed after runtimeDuration ended.")
+
+	// Wait for workflows with a timeout
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		storeLog("All workflows completed within timeout")
+	case <-time.After(5 * time.Second): // Give 5 extra seconds for workflows to finish
+		pterm.Warning.Println("Timeout waiting for workflows to complete - some may still be running")
+		storeLog("Timeout reached after 25 seconds; some workflows may not have completed")
+	}
+
+	// Final update to duration bar
+	durationBar.Current = runtimeDuration
+	durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, "Run Duration (Completed)"))
+
+	// Stop the MultiPrinter
+	multi.Stop()
+
+	// Calculate averages from cpuHistory and memHistory
+	var avgCPU, avgMem float64
+	mutex.Lock()
+	if len(cpuHistory) > 0 {
+		var cpuSum float64
+		for _, val := range cpuHistory {
+			cpuSum += val
+		}
+		avgCPU = cpuSum / float64(len(cpuHistory))
+	}
+	if len(memHistory) > 0 {
+		var memSum float64
+		for _, val := range memHistory {
+			memSum += val
+		}
+		avgMem = memSum / float64(len(memHistory))
+	}
+	mutex.Unlock()
+
+	// Capture other final stats for summary
+	finalActive := len(semaphore)
+	finalStarted := atomic.LoadInt64(&totalWorkflowsStarted)
+	finalCompleted := atomic.LoadInt64(&totalWorkflowsCompleted)
+	finalFailed := atomic.LoadInt64(&totalWorkflowsFailed)
+
+	// Display summary
+	pterm.DefaultSection.WithStyle(pterm.NewStyle(pterm.FgCyan)).Println("Run Summary - Performance Report")
+	pterm.DefaultTable.
+		WithHasHeader().
+		WithBoxed(true).
+		WithLeftAlignment().
+		WithData(pterm.TableData{
+			{"Metric", "Value", "Status"},
+			{"Total Workflows Started", fmt.Sprintf("%d", finalStarted), "🚀 Launched"},
+			{"Total Workflows Completed", fmt.Sprintf("%d", finalCompleted), "✅ Done"},
+			{"Total Workflows Failed", fmt.Sprintf("%d", finalFailed), func() string {
+				if finalFailed > 0 {
+					return "💥 Oof"
+				}
+				return "🎉 Perfect"
+			}()},
+			{"Final Active vUsers", fmt.Sprintf("%d/%d", finalActive, concurrent), "👥 Remaining"},
+			{"Average CPU Usage", fmt.Sprintf("%.1f%%", avgCPU), cpuStatus(avgCPU)},
+			{"Average Memory Usage", fmt.Sprintf("%.1f%%", avgMem), memStatus(avgMem)},
+			{"Run Duration", fmt.Sprintf("%ds", runtimeDuration), "⏱️ Completed"},
+		}).Render()
+
+	pterm.Success.Println("All workflows wrapped up - Time for a victory lap!")
+	storeLog("All workflows completed after runtimeDuration ended (or timeout enforced)")
 }
 
-func getActiveWorkflows() int {
-	if connect3270.Verbose {
-		log.Println("Starting getActiveWorkflows")
+// Helper functions for summary status
+func cpuStatus(cpu float64) string {
+	switch {
+	case cpu < 50:
+		return "🟢 Optimal"
+	case cpu < 80:
+		return "🟡 Moderate"
+	default:
+		return "🔴 High"
 	}
-	mutex.Lock()
-	defer mutex.Unlock()
-	return activeWorkflows
+}
+
+func memStatus(mem float64) string {
+	switch {
+	case mem < 50:
+		return "🟢 Optimal"
+	case mem < 80:
+		return "🟡 Moderate"
+	default:
+		return "🔴 High"
+	}
+}
+
+func clear() {
+	print("\033[H\033[2J")
 }
 
 func getNextAvailablePort() int {
@@ -898,7 +1074,7 @@ func getNextAvailablePort() int {
 			return lastUsedPort
 		}
 		if connect3270.Verbose {
-			log.Printf("Port %d is in use, trying next port", lastUsedPort)
+			pterm.Warning.Printf("Port %d is taken - port party’s full!\n", lastUsedPort)
 		}
 	}
 }
@@ -908,7 +1084,7 @@ func isPortAvailable(port int) bool {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		if connect3270.Verbose {
-			log.Printf("Port %d is in use, trying next port", port)
+			pterm.Info.Printf("Port %d in use - next contestant please!\n", port)
 		}
 		return false
 	}
@@ -925,16 +1101,25 @@ func min(a, b int) int {
 
 func validateConfiguration(config *Configuration) error {
 	if connect3270.Verbose {
-		log.Println("Starting validateConfiguration")
+		pterm.Info.Println("Validating config - let’s see if it’s naughty or nice!")
 	}
 	if config.Host == "" {
-		return fmt.Errorf("host is empty")
+		return fmt.Errorf("host is empty - where’s the party at?")
 	}
 	if config.Port <= 0 {
-		return fmt.Errorf("port is invalid")
+		return fmt.Errorf("port is invalid - ports cant be negative silly")
 	}
 	if config.OutputFilePath == "" {
-		return fmt.Errorf("output file path is empty")
+		hasScreenGrab := false
+		for _, step := range config.Steps {
+			if step.Type == "AsciiScreenGrab" {
+				hasScreenGrab = true
+				break
+			}
+		}
+		if hasScreenGrab {
+			return fmt.Errorf("output file path is empty - screen grab needs a home")
+		}
 	}
 	for _, step := range config.Steps {
 		switch step.Type {
@@ -942,28 +1127,23 @@ func validateConfiguration(config *Configuration) error {
 			continue
 		case "CheckValue", "FillString":
 			if step.Coordinates.Row == 0 || step.Coordinates.Column == 0 {
-				return fmt.Errorf("coordinates are incomplete in a %s step", step.Type)
+				return fmt.Errorf("coords missing in %s step - lost in space", step.Type)
 			}
 			if step.Text == "" {
-				return fmt.Errorf("text is empty in a %s step", step.Type)
+				return fmt.Errorf("text empty in %s step - cat got your tongue?", step.Type)
 			}
 		default:
-			return fmt.Errorf("unknown step type: %s", step.Type)
+			return fmt.Errorf("unknown step type: %s - what’s this nonsense?", step.Type)
 		}
 	}
 	return nil
 }
 
-// runDashboard launches the dashboard server. It now serves two charts:
-// 1. A "Per PID Metrics" duration chart.
-// 2. A "cpuMemChart" that uses host-level CPU and Memory usage from the metrics file
-// with the smallest PID.
-// The metadata section uses a Bootstrap jumbotron and flex grid.
 func runDashboard() {
 	addr := fmt.Sprintf(":%d", dashboardPort)
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		log.Printf("Dashboard already running on port %d, skipping local dashboard.", dashboardPort)
+		pterm.Warning.Printf("Dashboard already vibing on port %d - skipping the encore!\n", dashboardPort)
 		go func() {
 			for {
 				updateMetricsFile()
@@ -973,53 +1153,44 @@ func runDashboard() {
 		return
 	}
 	dashboardStarted = true
-	{
-		dashboardDir, err := os.UserConfigDir()
-		if err != nil {
-			log.Printf("Error fetching user config directory: %v", err)
-			dashboardDir = filepath.Join(".", "dashboard")
-		} else {
-			dashboardDir = filepath.Join(dashboardDir, "3270Connect", "dashboard")
-		}
-		files, err := filepath.Glob(filepath.Join(dashboardDir, "metrics_*.json"))
-		if err != nil {
-			log.Printf("Error listing old metrics files: %v", err)
-		} else {
-			for _, f := range files {
-				if err := os.Remove(f); err != nil {
-					log.Printf("Error removing old metrics file %s: %v", f, err)
-				} else {
-					log.Printf("Removed old metrics file: %s", f)
-				}
+	spinner, _ := pterm.DefaultSpinner.WithRemoveWhenDone(true).Start("Cleaning up old metrics - sweeping the floor!")
+	dashboardDir, err := os.UserConfigDir()
+	if err != nil {
+		pterm.Warning.Println("Can’t find config dir - defaulting to local:", err)
+		dashboardDir = filepath.Join(".", "dashboard")
+	} else {
+		dashboardDir = filepath.Join(dashboardDir, "3270Connect", "dashboard")
+	}
+	files, err := filepath.Glob(filepath.Join(dashboardDir, "metrics_*.json"))
+	if err != nil {
+		spinner.Warning("Error listing old metrics - file system’s trolling:", err)
+	} else {
+		for _, f := range files {
+			if err := os.Remove(f); err != nil {
+				pterm.Warning.Printf("Failed to yeet old metrics file %s: %v\n", f, err)
+			} else {
+				//pterm.Info.Printf("Old metrics file %s gone - poof!\n", f)
 			}
 		}
 	}
-
-	// Clean up old JSON logs before starting the dashboard
 	logFiles, err := filepath.Glob(filepath.Join("logs", "logs_*.json"))
 	if err == nil {
 		for _, lf := range logFiles {
 			if err := os.Remove(lf); err != nil {
-				log.Printf("Error removing old console log file %s: %v", lf, err)
+				//pterm.Warning.Printf("Failed to nuke old log file %s: %v\n", lf, err)
 			} else {
-				log.Printf("Removed old console log file: %s", lf)
+				//pterm.Info.Printf("Old log file %s vaporized!\n", lf)
 			}
 		}
 	}
+	spinner.Success("Cleanup done - dashboard’s fresh as a daisy!")
 
 	setupConsoleHandler()
 	setupTerminalConsoleHandler()
 	http.HandleFunc("/dashboard", func(w http.ResponseWriter, r *http.Request) {
-		dashboardDir, err := os.UserConfigDir()
-		if err != nil {
-			log.Printf("Error fetching user config directory: %v", err)
-			dashboardDir = filepath.Join(".", "dashboard")
-		} else {
-			dashboardDir = filepath.Join(dashboardDir, "3270Connect", "dashboard")
-		}
 		files, err := filepath.Glob(filepath.Join(dashboardDir, "metrics_*.json"))
 		if err != nil {
-			log.Printf("Error listing metrics files: %v", err)
+			pterm.Warning.Println("Error listing metrics files:", err)
 			files = []string{}
 		}
 		var metricsList []Metrics
@@ -1027,12 +1198,12 @@ func runDashboard() {
 		for _, f := range files {
 			data, err := ioutil.ReadFile(f)
 			if err != nil {
-				log.Printf("Error reading file %s: %v", f, err)
+				pterm.Warning.Printf("Error reading metrics file %s: %v\n", f, err)
 				continue
 			}
 			var m Metrics
 			if err := json.Unmarshal(data, &m); err != nil {
-				log.Printf("Error unmarshaling file %s: %v", f, err)
+				pterm.Warning.Printf("Error unmarshaling metrics %s: %v\n", f, err)
 				continue
 			}
 			metricsList = append(metricsList, m)
@@ -1041,7 +1212,6 @@ func runDashboard() {
 			totalFailed += int(m.TotalWorkflowsFailed)
 			active += m.ActiveWorkflows
 		}
-		// To display host CPU and Memory, choose the metrics file with the smallest PID.
 		var hostMetrics *Metrics
 		if len(metricsList) > 0 {
 			hostMetrics = &metricsList[0]
@@ -1052,7 +1222,6 @@ func runDashboard() {
 			}
 		}
 		metricsJSON, _ := json.Marshal(metricsList)
-		// Escape any literal "%" in the JSON so that they are not mistaken for format specifiers.
 		autoRefresh := r.URL.Query().Get("autoRefresh")
 		refreshPeriod := r.URL.Query().Get("refreshPeriod")
 		if refreshPeriod == "" {
@@ -1104,11 +1273,11 @@ func runDashboard() {
 			MetricsJSON:             string(metricsJSON),
 		}
 		if err := dashboardTemplate.Execute(w, data); err != nil {
-			log.Printf("Error executing dashboard template: %v", err)
+			pterm.Error.Printf("Dashboard template execution failed - HTML’s throwing a tantrum: %v\n", err)
 		}
 	})
-
-	log.Printf("Dashboard available at http://localhost:%d/dashboard", dashboardPort)
+	pterm.Info.Printf("Dashboard live at %s - check it out!\n", pterm.FgBlue.Sprintf("http://localhost:%d/dashboard", dashboardPort))
+	pterm.Println()
 	go func() {
 		for {
 			updateMetricsFile()
@@ -1116,7 +1285,7 @@ func runDashboard() {
 		}
 	}()
 	if err := http.Serve(listener, nil); err != nil {
-		log.Printf("Dashboard server error: %v", err)
+		pterm.Error.Printf("Dashboard server crashed - send a medic: %v\n", err)
 	}
 }
 
@@ -1152,7 +1321,6 @@ func updateMetricsFile() {
 	copy(durationsCopy, workflowDurations)
 	timingsMutex.Unlock()
 	pid := os.Getpid()
-	// Get the entire command-line arguments except the program name
 	args := os.Args[1:]
 	parameters := strings.Join(args, " ")
 	metrics := Metrics{
@@ -1168,12 +1336,12 @@ func updateMetricsFile() {
 	}
 	data, err := json.Marshal(metrics)
 	if err != nil {
-		log.Printf("Error marshaling metrics for pid %d: %v", pid, err)
+		pterm.Warning.Printf("Metrics marshaling failed for pid %d - JSON’s sulking: %v\n", pid, err)
 		return
 	}
 	dashboardDir, err := os.UserConfigDir()
 	if err != nil {
-		log.Printf("Error fetching user config directory: %v", err)
+		pterm.Warning.Println("User config dir fetch failed - going local:", err)
 		dashboardDir = filepath.Join(".", "dashboard")
 	} else {
 		dashboardDir = filepath.Join(dashboardDir, "3270Connect", "dashboard")
@@ -1181,33 +1349,33 @@ func updateMetricsFile() {
 	os.MkdirAll(dashboardDir, 0755)
 	filePath := filepath.Join(dashboardDir, fmt.Sprintf("metrics_%d.json", pid))
 	if err := ioutil.WriteFile(filePath, data, 0644); err != nil {
-		log.Printf("Error writing metrics file for pid %d: %v", pid, err)
+		pterm.Warning.Printf("Metrics file write failed for pid %d - disk’s grumpy: %v\n", pid, err)
 	}
 }
 
 func aggregateMetrics() Metrics {
 	dashboardDir, err := os.UserConfigDir()
 	if err != nil {
-		log.Printf("Error fetching user config directory: %v", err)
+		pterm.Warning.Println("User config dir fetch failed:", err)
 		dashboardDir = filepath.Join(".", "dashboard")
 	} else {
 		dashboardDir = filepath.Join(dashboardDir, "3270Connect", "dashboard")
 	}
 	files, err := filepath.Glob(filepath.Join(dashboardDir, "metrics_*.json"))
 	if err != nil {
-		log.Printf("Error listing metrics files: %v", err)
+		pterm.Warning.Println("Metrics files listing failed:", err)
 		return Metrics{}
 	}
 	var agg Metrics
 	for _, f := range files {
 		data, err := ioutil.ReadFile(f)
 		if err != nil {
-			log.Printf("Error reading file %s: %v", f, err)
+			pterm.Warning.Printf("Reading file %s failed: %v\n", f, err)
 			continue
 		}
 		var m Metrics
 		if err := json.Unmarshal(data, &m); err != nil {
-			log.Printf("Error unmarshaling file %s: %v", f, err)
+			pterm.Warning.Printf("Unmarshaling file %s failed: %v\n", f, err)
 			continue
 		}
 		agg.TotalWorkflowsStarted += m.TotalWorkflowsStarted
@@ -1223,7 +1391,6 @@ func aggregateMetrics() Metrics {
 
 func monitorSystemUsage() {
 	for {
-		// Measure per-core CPU usage over a 1-second interval.
 		cpuPercents, err := cpu.Percent(1*time.Second, true)
 		if err == nil && len(cpuPercents) > 0 {
 			var sum float64
@@ -1238,8 +1405,6 @@ func monitorSystemUsage() {
 			}
 			mutex.Unlock()
 		}
-
-		// Get memory usage as before.
 		memStats, err := mem.VirtualMemory()
 		if err == nil {
 			mutex.Lock()
@@ -1249,27 +1414,22 @@ func monitorSystemUsage() {
 			}
 			mutex.Unlock()
 		}
-		// No additional sleep needed here since cpu.Percent already waited for 1 second.
 	}
 }
 
-// Add new HTTP handler for console logs
 func setupConsoleHandler() {
 	http.HandleFunc("/console", func(w http.ResponseWriter, r *http.Request) {
 		pidFilter := r.URL.Query().Get("pid")
 		var filtered []LogEntry
-
 		if pidFilter != "" {
-			// Read logs from disk for the specified PID
 			logFilePath := filepath.Join("logs", fmt.Sprintf("logs_%s.json", pidFilter))
 			file, err := os.Open(logFilePath)
 			if err != nil {
-				log.Printf("Error opening log file: %v", err)
+				pterm.Warning.Printf("Log file opening failed for PID %s: %v\n", pidFilter, err)
 				http.Error(w, "Error opening log file", http.StatusInternalServerError)
 				return
 			}
 			defer file.Close()
-
 			decoder := json.NewDecoder(file)
 			for {
 				var logEntry LogEntry
@@ -1277,7 +1437,7 @@ func setupConsoleHandler() {
 					if err == io.EOF {
 						break
 					}
-					log.Printf("Error decoding log entry: %v", err)
+					pterm.Warning.Println("Log entry decoding failed:", err)
 					http.Error(w, "Error decoding log entry", http.StatusInternalServerError)
 					return
 				}
@@ -1289,11 +1449,10 @@ func setupConsoleHandler() {
 				for _, lf := range logFiles {
 					file, err := os.Open(lf)
 					if err != nil {
-						log.Printf("Error opening log file: %v", err)
+						pterm.Warning.Printf("Log file %s opening failed: %v\n", lf, err)
 						continue
 					}
 					defer file.Close()
-
 					decoder := json.NewDecoder(file)
 					for {
 						var logEntry LogEntry
@@ -1301,7 +1460,7 @@ func setupConsoleHandler() {
 							if err == io.EOF {
 								break
 							}
-							log.Printf("Error decoding log entry: %v", err)
+							pterm.Warning.Println("Log entry decoding failed:", err)
 							continue
 						}
 						filtered = append(filtered, logEntry)
@@ -1309,11 +1468,9 @@ func setupConsoleHandler() {
 				}
 			}
 		}
-
 		sort.Slice(filtered, func(i, j int) bool {
 			return filtered[i].Timestamp.After(filtered[j].Timestamp)
 		})
-
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(filtered)
@@ -1324,18 +1481,15 @@ func setupTerminalConsoleHandler() {
 	http.HandleFunc("/terminal-console", func(w http.ResponseWriter, r *http.Request) {
 		pidFilter := r.URL.Query().Get("pid")
 		var filtered []LogEntry
-
 		if pidFilter != "" {
-			// Read logs from disk for the specified PID
 			logFilePath := filepath.Join("logs", fmt.Sprintf("logs_%s.json", pidFilter))
 			file, err := os.Open(logFilePath)
 			if err != nil {
-				log.Printf("Error opening log file: %v", err)
+				pterm.Warning.Printf("Log file opening failed for PID %s: %v\n", pidFilter, err)
 				http.Error(w, "Error opening log file", http.StatusInternalServerError)
 				return
 			}
 			defer file.Close()
-
 			decoder := json.NewDecoder(file)
 			for {
 				var logEntry LogEntry
@@ -1343,7 +1497,7 @@ func setupTerminalConsoleHandler() {
 					if err == io.EOF {
 						break
 					}
-					log.Printf("Error decoding log entry: %v", err)
+					pterm.Warning.Println("Log entry decoding failed:", err)
 					http.Error(w, "Error decoding log entry", http.StatusInternalServerError)
 					return
 				}
@@ -1355,11 +1509,10 @@ func setupTerminalConsoleHandler() {
 				for _, lf := range logFiles {
 					file, err := os.Open(lf)
 					if err != nil {
-						log.Printf("Error opening log file: %v", err)
+						pterm.Warning.Printf("Log file %s opening failed: %v\n", lf, err)
 						continue
 					}
 					defer file.Close()
-
 					decoder := json.NewDecoder(file)
 					for {
 						var logEntry LogEntry
@@ -1367,7 +1520,7 @@ func setupTerminalConsoleHandler() {
 							if err == io.EOF {
 								break
 							}
-							log.Printf("Error decoding log entry: %v", err)
+							pterm.Warning.Println("Log entry decoding failed:", err)
 							continue
 						}
 						filtered = append(filtered, logEntry)
@@ -1375,15 +1528,22 @@ func setupTerminalConsoleHandler() {
 				}
 			}
 		}
-
 		sort.Slice(filtered, func(i, j int) bool {
 			return filtered[i].Timestamp.After(filtered[j].Timestamp)
 		})
-
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
 		for _, entry := range filtered {
-			w.Write([]byte(fmt.Sprintf("%s | PID: %s | Params: %s | Log: %s\n", entry.Timestamp.Format(time.RFC3339), entry.PID, entry.Parameters, entry.Log)))
+			w.Write([]byte(fmt.Sprintf("%s\n", entry.Log)))
 		}
 	})
+}
+
+func getActiveWorkflows() int {
+	if connect3270.Verbose {
+		pterm.Info.Println("Counting active workflows - herd the cats!")
+	}
+	mutex.Lock()
+	defer mutex.Unlock()
+	return activeWorkflows
 }
