@@ -3,7 +3,7 @@
 #############################
 # Builder for Linux
 #############################
-FROM golang:1.20 AS builder-linux
+FROM golang:1.23 AS builder-linux
 
 # Set environment variables for Linux
 ENV GOARCH=amd64
@@ -21,7 +21,7 @@ RUN go build -o 3270Connect-linux go3270Connect.go
 #############################
 # Builder for Windows
 #############################
-FROM golang:1.20 AS builder-windows
+FROM golang:1.23 AS builder-windows
 
 # Set environment variables for Windows
 ENV GOARCH=amd64
