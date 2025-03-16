@@ -48,8 +48,9 @@ markdown_extensions:
   - pymdownx.caret
   - pymdownx.mark
   - pymdownx.tilde
+  markdown_extensions:
   - pymdownx.tasklist:
-      clickable: true
+      clickable_checkbox: true
   - attr_list
   - def_list
   - pymdownx.snippets:
