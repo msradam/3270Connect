@@ -125,7 +125,7 @@ jobs:
       - name: Install MkDocs and Dependencies
         run: |
           pip install mkdocs mkdocs-material mkdocs-video
-          pip install --upgrade pymdown-extensio
+          pip install --upgrade pymdown-extensions
 
       - name: Build MkDocs Site
         run: |
