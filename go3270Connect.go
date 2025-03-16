@@ -34,6 +34,9 @@ import (
 
 const version = "1.3"
 
+var errorList []error
+var errorMutex sync.Mutex
+
 // Configuration holds the settings for the terminal connection and the steps to be executed.
 type Configuration struct {
 	Host            string
