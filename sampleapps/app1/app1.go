@@ -5,45 +5,36 @@ import (
 	"net"
 	"os"
 	"strings"
-	"sync/atomic"
-	"time"
 
-	pt "github.com/pterm/pterm"
+	"github.com/pterm/pterm"
 	"github.com/racingmars/go3270"
 )
-
-// totalRequests will be incremented each time a connection is accepted.
-var totalRequests uint64
 
 func init() {
 	// put the go3270 library in debug mode
 	//go3270.Debug = os.Stderr
 	// Set up pterm with a funky theme
-	pt.DefaultSection.Style = pt.NewStyle(pt.FgCyan, pt.Bold)
-	pt.Info.Prefix = pt.Prefix{Text: "INFO", Style: pt.NewStyle(pt.BgBlue, pt.FgWhite)}
-	pt.Error.Prefix = pt.Prefix{Text: "ERROR", Style: pt.NewStyle(pt.BgRed, pt.FgWhite)}
-	pt.Success.Prefix = pt.Prefix{Text: "SUCCESS", Style: pt.NewStyle(pt.BgGreen, pt.FgBlack)}
-	pt.Warning.Prefix = pt.Prefix{Text: "WARNING", Style: pt.NewStyle(pt.BgYellow, pt.FgBlack)}
+	pterm.DefaultSection.Style = pterm.NewStyle(pterm.FgCyan, pterm.Bold)
+	pterm.Info.Prefix = pterm.Prefix{Text: "INFO", Style: pterm.NewStyle(pterm.BgBlue, pterm.FgWhite)}
+	pterm.Error.Prefix = pterm.Prefix{Text: "ERROR", Style: pterm.NewStyle(pterm.BgRed, pterm.FgWhite)}
+	pterm.Success.Prefix = pterm.Prefix{Text: "SUCCESS", Style: pterm.NewStyle(pterm.BgGreen, pterm.FgBlack)}
+	pterm.Warning.Prefix = pterm.Prefix{Text: "WARNING", Style: pterm.NewStyle(pterm.BgYellow, pterm.FgBlack)}
 
-	// Start a spinner that updates every second with the current request count.
-	//spinnerApp1, _ := pt.DefaultSpinner.
-	//	WithRemoveWhenDone(false).
-	//	WithText("Total Requests: 0").
-	//	Start()
-
-	go func() {
-		for {
-			// Get the current number of connections handled.
-			//current := atomic.LoadUint64(&totalRequests)
-			//spinnerApp1.UpdateText(fmt.Sprintf("Total Requests: %d", current))
-			time.Sleep(1 * time.Second)
-		}
-	}()
 }
 
 var screen1 = go3270.Screen{
 	{Row: 0, Col: 27, Intense: true, Content: "3270 Example Application"},
 	{Row: 2, Col: 0, Content: "Welcome to the go3270 example application. Please enter your name."},
+	{Row: 4, Col: 0, Content: "First Name  . . ."},
+	{Row: 4, Col: 19, Name: "fname", Write: true, Highlighting: go3270.Underscore},
+	{Row: 4, Col: 40, Autoskip: true}, // field "stop" character
+	{Row: 5, Col: 0, Content: "Last Name . . . ."},
+	{Row: 5, Col: 19, Name: "lname", Write: true, Highlighting: go3270.Underscore},
+	{Row: 5, Col: 40, Autoskip: true}, // field "stop" character
+	{Row: 6, Col: 0, Content: "Password  . . . ."},
+	{Row: 6, Col: 19, Name: "password", Write: true, Hidden: true},
+	{Row: 6, Col: 40}, // field "stop" character
+	{Row: 8, Col: 0, Content: "Press"},
 	{Row: 8, Col: 6, Intense: true, Content: "enter"},
 	{Row: 8, Col: 12, Content: "to submit your name."},
 	{Row: 10, Col: 0, Intense: true, Color: go3270.Red, Name: "errormsg"}, // a blank field for error messages
@@ -77,15 +68,13 @@ func RunApplication(port int) {
 	}
 	defer ln.Close()
 
-	pt.Info.Printf("Listening on port %d for connections\n", port)
-
-	pt.Info.Printf("Press Ctrl-C to end server.")
-	pt.Println()
+	pterm.Info.Printf("Listening on port %d for connections\n", port)
+	pterm.Info.Printf("Press Ctrl-C to end server.")
 
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			pt.Error.Printf("Error accepting connection: %v", err)
+			pterm.Error.Printf("Error accepting connection: %v", err)
 			continue
 		}
 		go handle(conn)
@@ -95,9 +84,6 @@ func RunApplication(port int) {
 // handle is the handler for individual user connections.
 func handle(conn net.Conn) {
 	defer conn.Close()
-
-	// Increment the totalRequests counter
-	atomic.AddUint64(&totalRequests, 1)
 
 	// Always begin new connection by negotiating the telnet options
 	go3270.NegotiateTelnet(conn)
@@ -121,7 +107,7 @@ mainLoop:
 			// the fields to start out blank.
 			response, err := go3270.ShowScreen(screen1, fieldValues, 4, 20, conn)
 			if err != nil {
-				//pt.Error.Printf("%v", err)
+				//pterm.Error.Printf("%v", err)
 				return
 			}
 
@@ -169,7 +155,7 @@ mainLoop:
 			passwordLength, passwordPlural)
 		response, err := go3270.ShowScreen(screen2, fieldValues, 0, 0, conn)
 		if err != nil {
-			//pt.Error.Printf("%v", err)
+			//pterm.Error.Printf("%v", err)
 			return
 		}
 
@@ -182,5 +168,5 @@ mainLoop:
 		continue
 	}
 
-	pt.Success.Println("Connection closed")
+	pterm.Success.Println("Connection closed")
 }

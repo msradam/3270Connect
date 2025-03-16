@@ -19,6 +19,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/pkg/browser"
+
 	connect3270 "github.com/3270io/3270Connect/connect3270"
 	"github.com/3270io/3270Connect/sampleapps/app1"
 	app2 "github.com/3270io/3270Connect/sampleapps/app2"
@@ -766,7 +768,7 @@ func printBanner() {
 	pterm.DefaultBigText.
 		WithLetters(
 			putils.LettersFromStringWithStyle("3270", pterm.FgLightGreen.ToStyle()),
-			putils.LettersFromStringWithStyle("Connect", pterm.FgGreen.ToStyle()),
+			putils.LettersFromStringWithStyle("Connect", pterm.FgWhite.ToStyle()),
 		).
 		Render()
 
@@ -820,8 +822,8 @@ func main() {
 			runWorkflow(7000, config)
 		}
 		if concurrent > 1 && dashboardStarted {
-			pterm.Info.Printf("All workflows done, shutting down dashboard on port %d.\n", dashboardPort)
-			storeLog(fmt.Sprintf("All workflows completed, shutting down dashboard on port %d.", dashboardPort))
+			pterm.Info.Printf("All workflows completed but the dashboard is still running on port %d. Press Ctrl+C to exit.", dashboardPort)
+			select {}
 		}
 	}
 }
@@ -829,6 +831,13 @@ func main() {
 func setGlobalSettings() {
 	connect3270.Headless = headless
 	connect3270.Verbose = verbose
+}
+
+func openDashboardEmbedded() {
+	url := "http://localhost:9200/dashboard"
+	if err := browser.OpenURL(url); err != nil {
+		pterm.Error.Printf("Failed to open dashboard URL: %v\n", err)
+	}
 }
 
 func runConcurrentWorkflows(config *Configuration) {
@@ -839,10 +848,21 @@ func runConcurrentWorkflows(config *Configuration) {
 	// Initialize MultiPrinter for all output
 	multi := pterm.DefaultMultiPrinter
 
-	// Define a fixed width for titles to align text (adjusted for longest dynamic title)
+	// Define a fixed width for titles to align text
 	const titleWidth = 30
 
-	// Uniform progress bars with aligned titles and consistent formatting
+	// Uniform progress bars
+	durationBar, _ := pterm.DefaultProgressbar.
+		WithTotal(runtimeDuration).
+		WithTitle(pterm.Sprintf("%-*s", titleWidth, "  Run Duration  ")).
+		WithWriter(multi.NewWriter()).
+		WithBarCharacter("-").
+		WithBarStyle(pterm.NewStyle(pterm.FgCyan)).
+		WithShowPercentage(true).
+		WithShowCount(false).
+		WithShowElapsedTime(true).
+		Start()
+
 	activeBar, _ := pterm.DefaultProgressbar.
 		WithTotal(concurrent).
 		WithTitle(pterm.Sprintf("%-*s", titleWidth, "Active vUsers")).
@@ -876,118 +896,139 @@ func runConcurrentWorkflows(config *Configuration) {
 		WithShowElapsedTime(true).
 		Start()
 
-	durationBar, _ := pterm.DefaultProgressbar.
-		WithTotal(runtimeDuration).
-		WithTitle(pterm.Sprintf("%-*s", titleWidth, "Run Duration")).
-		WithWriter(multi.NewWriter()).
-		WithBarCharacter("█").
-		WithBarStyle(pterm.NewStyle(pterm.FgCyan)).
-		WithShowPercentage(true).
-		WithShowCount(false).
-		WithShowElapsedTime(true).
-		Start()
-
 	// Start the MultiPrinter
 	multi.Start()
 
-	// Main workflow loop with hard timeout
-	deadline := time.After(time.Duration(runtimeDuration) * time.Second)
-outer:
-	for {
-		select {
-		case <-deadline:
-			// Final update before exit
-			durationBar.Current = runtimeDuration
-			durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, "Run Duration (Completed)"))
-			break outer // Exit loops after runtimeDuration (25 seconds)
-		default:
-			// Update progress bars every iteration
-			elapsed := int(time.Since(overallStart).Seconds())
-			remaining := runtimeDuration - elapsed
-			if remaining < 0 {
-				remaining = 0
-			}
-			durationBar.Current = elapsed
-			if elapsed < runtimeDuration {
-				durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Run Duration (%ds left)", remaining)))
-			} else {
-				durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, "Run Duration (Completed)"))
-			}
+	// Group durationBar and activeBar in a table box
+	//pterm.DefaultTable.
+	//	WithHasHeader(false).
+	//	WithBoxed(true).
+	//	WithData(pterm.TableData{
+	//		{durationBar.Title, activeBar.Title},
+	//		{fmt.Sprintf("%d/%d", durationBar.Current, durationBar.Total), fmt.Sprintf("%d/%d", activeBar.Current, activeBar.Total)},
+	//	}).
+	//	Render()
 
-			cpuPercent, _ := cpu.Percent(0, false)
-			memStats, _ := mem.VirtualMemory()
-			if cpuPercent[0] < 50 {
-				cpuBar.BarStyle = pterm.NewStyle(pterm.FgGreen)
-			} else if cpuPercent[0] < 80 {
-				cpuBar.BarStyle = pterm.NewStyle(pterm.FgYellow)
-			} else {
-				cpuBar.BarStyle = pterm.NewStyle(pterm.FgRed)
-			}
-			cpuBar.Current = int(cpuPercent[0])
+	// Group cpuBar and memBar in a different table box
+	//pterm.DefaultTable.
+	//	WithHasHeader(false).
+	//	WithBoxed(true).
+	//	WithData(pterm.TableData{
+	//		{cpuBar.Title, memBar.Title},
+	//		{fmt.Sprintf("%d/%d", cpuBar.Current, cpuBar.Total), fmt.Sprintf("%d/%d", memBar.Current, memBar.Total)},
+	//	}).
+	//	Render()
 
-			if int(memStats.UsedPercent) < 50 {
-				memBar.BarStyle = pterm.NewStyle(pterm.FgGreen)
-			} else if int(memStats.UsedPercent) < 80 {
-				memBar.BarStyle = pterm.NewStyle(pterm.FgYellow)
-			} else {
-				memBar.BarStyle = pterm.NewStyle(pterm.FgRed)
-			}
-			memBar.Current = int(memStats.UsedPercent)
+	// Channel to stop the progress bar updates
+	stopTicker := make(chan struct{})
 
-			activeBar.Current = len(semaphore)
-			activeBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Active vUsers (%d/%d)", len(semaphore), concurrent)))
-			storeLog(fmt.Sprintf("Elapsed: %d, Remaining: %d, Active workflows: %d, CPU usage: %.2f%%, Memory usage: %.2f%%", elapsed, remaining, len(semaphore), cpuPercent[0], memStats.UsedPercent))
-
-			// Inner loop for workflow scheduling
-			for time.Since(overallStart) < time.Duration(runtimeDuration)*time.Second {
-				freeSlots := concurrent - len(semaphore)
-				if freeSlots <= 0 {
-					time.Sleep(time.Duration(config.RampUpDelay * float64(time.Second)))
-					break
+	// Goroutine for real-time progress bar updates
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				elapsed := int(time.Since(overallStart).Seconds())
+				if durationBar != nil {
+					durationBar.Current = min(elapsed, runtimeDuration)
+					if elapsed < runtimeDuration {
+						durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Run Duration (%ds left)", runtimeDuration-elapsed)))
+					} else {
+						durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, "Run Duration (Completed)"))
+					}
 				}
-				batchSize := min(freeSlots, config.RampUpBatchSize)
-				storeLog(fmt.Sprintf("Increasing batch by %d, current size is %d, new total target is %d", batchSize, len(semaphore), len(semaphore)+batchSize))
-				for i := 0; i < batchSize; i++ {
-					semaphore <- struct{}{}
-					wg.Add(1)
-					go func() {
-						defer wg.Done()
-						defer func() { <-semaphore }() // Ensure semaphore is released
-						portToUse := getNextAvailablePort()
-						err := runWorkflow(portToUse, config)
-						if err != nil && connect3270.Verbose {
-							pterm.Error.Printf("Workflow on port %d went belly up: %v\n", portToUse, err)
-						}
-						activeBar.Current = len(semaphore) // Update active users when workflow ends
-					}()
+				if cpuBar != nil {
+					cpuPercent, _ := cpu.Percent(0, false)
+					if len(cpuPercent) > 0 {
+						cpuBar.Current = int(cpuPercent[0])
+					}
 				}
-				time.Sleep(time.Duration(config.RampUpDelay * float64(time.Second)))
+				if memBar != nil {
+					memStats, _ := mem.VirtualMemory()
+					if memStats != nil {
+						memBar.Current = int(memStats.UsedPercent)
+					}
+				}
+				if activeBar != nil {
+					activeBar.Current = len(semaphore)
+					activeBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Active vUsers (%d/%d)", len(semaphore), concurrent)))
+				}
+				// Log status update
+				cpuPercentLog, _ := cpu.Percent(0, false)
+				memStatsLog, _ := mem.VirtualMemory()
+				cpuVal := 0.0
+				if len(cpuPercentLog) > 0 {
+					cpuVal = cpuPercentLog[0]
+				}
+				memVal := 0.0
+				if memStatsLog != nil {
+					memVal = memStatsLog.UsedPercent
+				}
+				storeLog(fmt.Sprintf("Elapsed: %d, Active workflows: %d, CPU usage: %.2f%%, Memory usage: %.2f%%", elapsed, len(semaphore), cpuVal, memVal))
+			case <-stopTicker:
+				return
 			}
 		}
-	}
-
-	// Wait for workflows with a timeout
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
 	}()
-	select {
-	case <-done:
-		storeLog("All workflows completed within timeout")
-	case <-time.After(5 * time.Second): // Give 5 extra seconds for workflows to finish
-		pterm.Warning.Println("Timeout waiting for workflows to complete - some may still be running")
-		storeLog("Timeout reached after 25 seconds; some workflows may not have completed")
+
+	// Scheduling workflows using nested loops
+	for time.Since(overallStart) < time.Duration(runtimeDuration)*time.Second {
+		for time.Since(overallStart) < time.Duration(runtimeDuration)*time.Second {
+			freeSlots := concurrent - len(semaphore)
+			if freeSlots <= 0 {
+				time.Sleep(time.Duration(config.RampUpDelay * float64(time.Second)))
+				break
+			}
+			batchSize := min(freeSlots, config.RampUpBatchSize)
+			storeLog(fmt.Sprintf("Increasing batch by %d, current size is %d, new total target is %d",
+				batchSize, len(semaphore), len(semaphore)+batchSize))
+			for i := 0; i < batchSize; i++ {
+				semaphore <- struct{}{}
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					portToUse := getNextAvailablePort()
+					err := runWorkflow(portToUse, config)
+					if err != nil {
+						if connect3270.Verbose {
+							pterm.Error.Printf("Workflow on port %d error: %v\n", portToUse, err)
+						}
+						storeLog(fmt.Sprintf("Workflow on port %d error: %v", portToUse, err))
+					}
+					<-semaphore
+				}()
+			}
+			cpuPercent, _ := cpu.Percent(0, false)
+			memStats, _ := mem.VirtualMemory()
+			storeLog(fmt.Sprintf("Currently active workflows: %d, CPU usage: %.2f%%, memory usage: %.2f%%",
+				len(semaphore), cpuPercent[0], memStats.UsedPercent))
+			time.Sleep(time.Duration(config.RampUpDelay * float64(time.Second)))
+		}
+		cpuPercent, _ := cpu.Percent(0, false)
+		memStats, _ := mem.VirtualMemory()
+		storeLog(fmt.Sprintf("Currently active workflows: %d, CPU usage: %.2f%%, memory usage: %.2f%%",
+			len(semaphore), cpuPercent[0], memStats.UsedPercent))
+		time.Sleep(time.Duration(config.RampUpDelay * float64(time.Second)))
 	}
 
-	// Final update to duration bar
-	durationBar.Current = runtimeDuration
-	durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, "Run Duration (Completed)"))
-
-	// Stop the MultiPrinter
 	multi.Stop()
 
-	// Calculate averages from cpuHistory and memHistory
+	// Notify that no new workflows will be scheduled
+	pterm.Info.Println("Run duration complete. Waiting for current workflows to finish...")
+	wg.Wait()
+	storeLog("All workflows completed after runtimeDuration ended.")
+
+	// Stop the progress bar updates
+	close(stopTicker)
+
+	// Final update to duration bar
+	elapsed := int(time.Since(overallStart).Seconds())
+	durationBar.WithTotal(elapsed)
+	durationBar.Current = elapsed
+	durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Run Duration (%ds elapsed)", elapsed)))
+
+	// Calculate averages for CPU and Memory usage
 	var avgCPU, avgMem float64
 	mutex.Lock()
 	if len(cpuHistory) > 0 {
@@ -1006,13 +1047,30 @@ outer:
 	}
 	mutex.Unlock()
 
-	// Capture other final stats for summary
+	// Calculate average workflow completion time
+	var avgWorkflowTime float64
+	timingsMutex.Lock()
+	if len(workflowDurations) > 0 {
+		var totalDuration float64
+		for _, d := range workflowDurations {
+			totalDuration += d
+		}
+		avgWorkflowTime = totalDuration / float64(len(workflowDurations))
+	}
+	timingsMutex.Unlock()
+
+	// Capture final stats
 	finalActive := len(semaphore)
 	finalStarted := atomic.LoadInt64(&totalWorkflowsStarted)
 	finalCompleted := atomic.LoadInt64(&totalWorkflowsCompleted)
 	finalFailed := atomic.LoadInt64(&totalWorkflowsFailed)
 
-	// Display summary
+	clear()
+	printBanner()
+
+	pterm.Success.Println("All workflows wrapped up - Time for a victory lap!")
+
+	// Display summary report
 	pterm.DefaultSection.WithStyle(pterm.NewStyle(pterm.FgCyan)).Println("Run Summary - Performance Report")
 	pterm.DefaultTable.
 		WithHasHeader().
@@ -1028,14 +1086,20 @@ outer:
 				}
 				return "🎉 Perfect"
 			}()},
-			{"Final Active vUsers", fmt.Sprintf("%d/%d", finalActive, concurrent), "👥 Remaining"},
+			{"Final Active vUsers", fmt.Sprintf("%d/%d", finalActive, concurrent), func() string {
+				if finalActive > 0 {
+					return "💥 Oof"
+				}
+				return "🎉 Perfect"
+			}()},
 			{"Average CPU Usage", fmt.Sprintf("%.1f%%", avgCPU), cpuStatus(avgCPU)},
 			{"Average Memory Usage", fmt.Sprintf("%.1f%%", avgMem), memStatus(avgMem)},
-			{"Run Duration", fmt.Sprintf("%ds", runtimeDuration), "⏱️ Completed"},
+			{"Average Workflow Time", fmt.Sprintf("%.2fs", avgWorkflowTime), "⏱️ Avg Duration"},
+			{"Run Duration", fmt.Sprintf("%ds", elapsed), "⏱️ Completed"},
 		}).Render()
 
-	pterm.Success.Println("All workflows wrapped up - Time for a victory lap!")
-	storeLog("All workflows completed after runtimeDuration ended (or timeout enforced)")
+	// Note: If you already print the dashboard message in main, you might remove this duplicate.
+	storeLog("All workflows completed or timed out")
 }
 
 // Helper functions for summary status
@@ -1153,6 +1217,7 @@ func runDashboard() {
 		return
 	}
 	dashboardStarted = true
+	//openDashboardEmbedded()
 	spinner, _ := pterm.DefaultSpinner.WithRemoveWhenDone(true).Start("Cleaning up old metrics - sweeping the floor!")
 	dashboardDir, err := os.UserConfigDir()
 	if err != nil {
