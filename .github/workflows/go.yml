@@ -122,10 +122,8 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install --upgrade pymdown-extensions mkdocs-material
+      - name: Install Dependencies
+        run: pip install --upgrade mkdocs-material pymdown-extensions mkdocs-video
 
       - name: Build MkDocs Site
         run: |
