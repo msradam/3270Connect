@@ -587,38 +587,77 @@ func runWorkflow(scriptPort int, config *Configuration) error {
 			pterm.Warning.Printf("Unknown step type: %s - what’s this sorcery?\n", step.Type)
 		}
 	}
-	mutex.Lock()
-	activeWorkflows--
-	mutex.Unlock()
-	duration := time.Since(startTime).Seconds()
-	timingsMutex.Lock()
-	workflowDurations = append(workflowDurations, duration)
-	timingsMutex.Unlock()
-	if workflowFailed {
-		pterm.Error.Printf(fmt.Sprintf("Workflow %d crashed and burned!", scriptPort))
-		storeLog(fmt.Sprintf("Workflow for scriptPort %d failed", scriptPort))
-		atomic.AddInt64(&totalWorkflowsFailed, 1)
-	} else {
-		if connect3270.Verbose {
-			pterm.Success.Printf(fmt.Sprintf("Workflow %d nailed it!", scriptPort))
-			storeLog(fmt.Sprintf("Workflow for scriptPort %d completed successfully", scriptPort))
-		}
-		if config.OutputFilePath != "" {
-			_ = os.Remove(config.OutputFilePath)
-			if err := os.Rename(tmpFileName, config.OutputFilePath); err != nil {
-				pid := os.Getpid()
-				uniqueOutputPath := fmt.Sprintf("%s.%d", config.OutputFilePath, pid)
-				if err2 := os.Rename(tmpFileName, uniqueOutputPath); err2 != nil {
-					pterm.Error.Printf("File rename to unique path failed - chaos reigns: %v\n", err2)
-				} else if verbose {
-					pterm.Info.Printf("Renamed to unique output file: %s\n", uniqueOutputPath)
-				}
-				return err
-			}
-		}
-		atomic.AddInt64(&totalWorkflowsCompleted, 1)
-	}
-	return nil
+
+	func runWorkflow(scriptPort int, config *Configuration) error {
+    startTime := time.Now()
+    atomic.AddInt64(&totalWorkflowsStarted, 1)
+    if connect3270.Verbose {
+        pterm.Info.Printf("Starting workflow for scriptPort %d\n", scriptPort)
+    }
+    storeLog(fmt.Sprintf("Starting workflow for scriptPort %d", scriptPort))
+    mutex.Lock()
+    activeWorkflows++
+    mutex.Unlock()
+    e := connect3270.NewEmulator(config.Host, config.Port, strconv.Itoa(scriptPort))
+    tmpFile, err := ioutil.TempFile("", "workflowOutput_")
+    if err != nil {
+        return handleError(err, fmt.Sprintf("Temp file creation failed - disk’s playing hide and seek: %v", err))
+    }
+    tmpFileName := tmpFile.Name()
+    tmpFile.Close()
+    e.InitializeOutput(tmpFileName, runAPI)
+    workflowFailed := false
+    var steps []Step
+    if config.InputFilePath != "" {
+        steps, err = loadInputFile(config.InputFilePath)
+        if err != nil {
+            return handleError(err, fmt.Sprintf("Input file load crashed - file has gone rogue: %v\n", err))
+        }
+    } else {
+        steps = config.Steps
+    }
+
+    for _, step := range steps {
+        if workflowFailed {
+            break
+        }
+        err := executeStep(e, step, tmpFileName)
+        if err != nil {
+            workflowFailed = true
+            addError(err)
+        }
+    }
+
+    mutex.Lock()
+    activeWorkflows--
+    mutex.Unlock()
+    duration := time.Since(startTime).Seconds()
+    timingsMutex.Lock()
+    workflowDurations = append(workflowDurations, duration)
+    timingsMutex.Unlock()
+
+    if workflowFailed {
+        atomic.AddInt64(&totalWorkflowsFailed, 1)
+    } else {
+        if connect3270.Verbose {
+            storeLog(fmt.Sprintf("Workflow for scriptPort %d completed successfully", scriptPort))
+        }
+        if config.OutputFilePath != "" {
+            _ = os.Remove(config.OutputFilePath)
+            if err := os.Rename(tmpFileName, config.OutputFilePath); err != nil {
+                pid := os.Getpid()
+                uniqueOutputPath := fmt.Sprintf("%s.%d", config.OutputFilePath, pid)
+                if err2 := os.Rename(tmpFileName, uniqueOutputPath); err2 != nil {
+                    addError(err2)
+                } else if verbose {
+                    pterm.Info.Printf("Renamed to unique output file: %s\n", uniqueOutputPath)
+                }
+                return err
+            }
+        }
+        atomic.AddInt64(&totalWorkflowsCompleted, 1)
+    }
+    return nil
 }
 
 func runAPIWorkflow() {
@@ -784,51 +823,52 @@ func printBanner() {
 }
 
 func main() {
-	flag.Parse()
-	printBanner()
-	mutex.Lock()
-	lastUsedPort = startPort
-	mutex.Unlock()
-	if *showVersion {
-		pterm.Info.Printf("3270Connect Version: %s \n", version)
-		os.Exit(0)
-	}
-	if showHelp {
-		pterm.Info.Printf("3270Connect Version: %s - Here’s the manual!\n", version)
-		flag.Usage()
-		os.Exit(0)
-	}
-	setGlobalSettings()
-	if concurrent > 1 || runtimeDuration > 0 {
-		go runDashboard()
-	}
-	go monitorSystemUsage()
-	if runApp != "" {
-		switch runApp {
-		case "1":
-			app1.RunApplication(runAppPort)
-			return
-		case "2":
-			app2.RunApplication(runAppPort)
-			return
-		default:
-			pterm.Error.Printf("Invalid runApp value: %s - Did you mean 1 or 2?\n", runApp)
-		}
-	}
-	config := loadConfiguration(configFile)
-	if runAPI {
-		runAPIWorkflow()
-	} else {
-		if concurrent > 1 {
-			runConcurrentWorkflows(config)
-		} else {
-			runWorkflow(7000, config)
-		}
-		if concurrent > 1 && dashboardStarted {
-			pterm.Info.Printf("All workflows completed but the dashboard is still running on port %d. Press Ctrl+C to exit.", dashboardPort)
-			select {}
-		}
-	}
+    flag.Parse()
+    printBanner()
+    mutex.Lock()
+    lastUsedPort = startPort
+    mutex.Unlock()
+    if *showVersion {
+        pterm.Info.Printf("3270Connect Version: %s \n", version)
+        os.Exit(0)
+    }
+    if showHelp {
+        pterm.Info.Printf("3270Connect Version: %s - Here’s the manual!\n", version)
+        flag.Usage()
+        os.Exit(0)
+    }
+    setGlobalSettings()
+    if concurrent > 1 || runtimeDuration > 0 {
+        go runDashboard()
+    }
+    go monitorSystemUsage()
+    if runApp != "" {
+        switch runApp {
+        case "1":
+            app1.RunApplication(runAppPort)
+            return
+        case "2":
+            app2.RunApplication(runAppPort)
+            return
+        default:
+            pterm.Error.Printf("Invalid runApp value: %s - Did you mean 1 or 2?\n", runApp)
+        }
+    }
+    config := loadConfiguration(configFile)
+    if runAPI {
+        runAPIWorkflow()
+    } else {
+        if concurrent > 1 {
+            runConcurrentWorkflows(config)
+        } else {
+            runWorkflow(7000, config)
+        }
+        if concurrent > 1 && dashboardStarted {
+            pterm.Info.Printf("All workflows completed but the dashboard is still running on port %d. Press Ctrl+C to exit.", dashboardPort)
+            select {}
+        }
+    }
+    showErrors()
 }
 
 func setGlobalSettings() {
