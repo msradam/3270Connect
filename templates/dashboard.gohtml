@@ -247,46 +247,110 @@
     function loadLogs() {
       var pid = document.getElementById("pidFilter").value;
       var url = "/console";
-      if (pid) { url += "?pid=" + encodeURIComponent(pid); }
+      if (pid) {
+        url += "?pid=" + encodeURIComponent(pid);
+      }
+
       fetch(url)
         .then(response => response.json())
         .then(data => {
           var container = document.getElementById("logsContainer");
           container.innerHTML = "";
-          if (!data || data.length === 0) { container.innerHTML = "<p>No logs found.</p>"; return; }
-            const pidParamsMap = {};
-            data.forEach(function(entry) {
+
+          if (!data || data.length === 0) {
+            container.innerHTML = "<p>No logs found.</p>";
+            return;
+          }
+
+          // Track parameters by PID
+          const pidParamsMap = {};
+
+          // Create a Bootstrap table
+          var table = document.createElement("table");
+          table.classList.add("table", "table-dark", "table-striped", "table-sm");
+
+          // Create a thead with column headers
+          var thead = document.createElement("thead");
+          thead.innerHTML = `
+            <tr>
+              <th style="width: 180px;">Time</th>
+              <th style="width: 60px;">PID</th>
+              <th>Log</th>
+            </tr>
+          `;
+          table.appendChild(thead);
+
+          // Create a tbody to hold log rows
+          var tbody = document.createElement("tbody");
+
+          data.forEach(function(entry) {
             const pid = entry.pid;
             const param = entry.parameters;
-            if (!pidParamsMap[pid]) { pidParamsMap[pid] = new Set(); }
+
+            // Maintain pidParamsMap for later display
+            if (!pidParamsMap[pid]) {
+              pidParamsMap[pid] = new Set();
+            }
             pidParamsMap[pid].add(param);
-            var entryDiv = document.createElement("div");
-            entryDiv.classList.add("d-flex", "justify-content-between", "mb-1", "p-1");
-            entryDiv.style.fontSize = "0.8rem";
-            entryDiv.style.fontFamily = "monospace";
-            entryDiv.style.position = "static";
-            var timestamp = new Date(entry.timestamp).toLocaleTimeString();
-            entryDiv.innerHTML = "<span style='color: #00FF00; margin-right: 10px;'>" + timestamp + "</span>" +
-                 "<span style='color: #00FF00; margin-right: 20px;'>PID: " + pid + "</span>" +
-                 "<span style='color: white;'>Log: " + entry.log + "</span>";
-            container.appendChild(entryDiv);
+
+            // Build a table row for each log entry
+            var row = document.createElement("tr");
+            var timestamp = new Date(entry.timestamp).toLocaleString();
+
+            row.innerHTML = `
+              <td style="color: green;">${timestamp}</td>
+              <td style="color: LightGreen;">${pid}</td>
+              <td style="color: white;">${entry.log}</td>
+            `;
+            tbody.appendChild(row);
           });
+
+          table.appendChild(tbody);
+          container.appendChild(table);
+
+          // Now populate the PID parameters section
           const containerParams = document.getElementById("pidParamsContainer");
           containerParams.innerHTML = "";
+
           let selectedPid = document.getElementById("pidFilter").value;
           if (!selectedPid) {
+            // Show params for all PIDs
             for (const [pid, paramsSet] of Object.entries(pidParamsMap)) {
               let paramString = Array.from(paramsSet).join(", ");
-              containerParams.innerHTML += '<h5><span class="badge bg-dark">PID: <span class="badge bg-light" style="color: black;">' + pid + '</span></span> <span class="badge bg-secondary" style="flex:1;">Params: <span class="badge bg-light" style="color: black;">' + paramString + '</span></span></h5>';
+              containerParams.innerHTML += `
+                <h5>
+                  <span class="badge bg-dark">
+                    PID: <span class="badge bg-light" style="color: black;">${pid}</span>
+                  </span>
+                  <span class="badge bg-secondary" style="flex:1;">
+                    Params: <span class="badge bg-light" style="color: black;">${paramString}</span>
+                  </span>
+                </h5>`;
             }
           } else {
+            // Show params only for the selected PID
             let paramsSet = pidParamsMap[selectedPid];
-            if (paramsSet) { let paramString = Array.from(paramsSet).join(", "); containerParams.innerHTML += '<h5><span class="badge bg-dark">PID: <span class="badge bg-light" style="color: black;">' + selectedPid + '</span></span> <span class="badge bg-secondary" style="flex:1;">Params: <span class="badge bg-light" style="color: black;">' + paramString + '</span></span></h5>'; }
-            else { containerParams.innerHTML = "<p>No logs found for PID " + selectedPid + ".</p>"; }
+            if (paramsSet) {
+              let paramString = Array.from(paramsSet).join(", ");
+              containerParams.innerHTML += `
+                <h5>
+                  <span class="badge bg-dark">
+                    PID: <span class="badge bg-light" style="color: black;">${selectedPid}</span>
+                  </span>
+                  <span class="badge bg-secondary" style="flex:1;">
+                    Params: <span class="badge bg-light" style="color: black;">${paramString}</span>
+                  </span>
+                </h5>`;
+            } else {
+              containerParams.innerHTML = `<p>No logs found for PID ${selectedPid}.</p>`;
+            }
           }
         })
-        .catch(err => { console.error("Error loading logs:", err); });
+        .catch(err => {
+          console.error("Error loading logs:", err);
+        });
     }
+
     var loadLogsButton = document.getElementById("loadLogs");
     if (loadLogsButton) {
       loadLogsButton.addEventListener("click", function() { loadLogs(); });
@@ -315,7 +379,13 @@
       pidInfoDiv.style.fontFamily = "monospace";
       pidInfoDiv.style.whiteSpace = "nowrap";
       pidInfoDiv.style.overflowX = "auto";
-      pidInfoDiv.innerHTML = `<span style='color: green; width: 10%;'>PID: ${metric.pid}</span>` +
+      var statusBadge = "";
+      if (extendedMetrics[metric.pid]) {
+        var statusObj = extendedMetrics[metric.pid];
+        var timeLeftDisplay = parseInt(statusObj.timeLeft) === 0 ? "" : ": " + statusObj.timeLeft + "s";
+        statusBadge = `<span class="badge ${statusObj.status === 'Running' ? 'bg-success' : 'bg-info'}" style="margin-right: 5px;">${statusObj.status}${timeLeftDisplay}</span>`;
+      }
+      pidInfoDiv.innerHTML = statusBadge + `<span style='color: green; width: 10%;'>PID: ${metric.pid}</span>` +
                  `<span style='color: grey; width: 10%;'>Active: ${metric.activeWorkflows}</span>` +
                  `<span style='color: grey; width: 10%;'>Started: ${metric.totalWorkflowsStarted}</span>` +
                  `<span style='color: grey; width: 10%;'>Completed: ${metric.totalWorkflowsCompleted}</span>` +
@@ -335,6 +405,16 @@
     loadLogs();
   }
 </script>
-  </script>
+<script>
+  // Create a mapping for extended metrics keyed by PID
+  var extendedMetrics = {
+    {{range .ExtendedMetricsList}}
+      "{{.PID}}": {
+        status: "{{.Status}}",
+        timeLeft: "{{.TimeLeft}}"
+      },
+    {{end}}
+  };
+</script>
 </body>
 </html>

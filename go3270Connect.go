@@ -32,7 +32,7 @@ import (
 	"github.com/shirou/gopsutil/mem"
 )
 
-const version = "1.3"
+const version = "1.3.1"
 
 var errorList []error
 var errorMutex sync.Mutex
@@ -105,6 +105,8 @@ var logMutex sync.Mutex
 var dashboardTemplateFS embed.FS
 
 var dashboardTemplate *template.Template
+
+var programStart time.Time
 
 func init() {
 	flag.StringVar(&configFile, "config", "workflow.json", "Path to the configuration file")
@@ -389,8 +391,7 @@ func runWorkflow(scriptPort int, config *Configuration) error {
 	e := connect3270.NewEmulator(config.Host, config.Port, strconv.Itoa(scriptPort))
 	tmpFile, err := ioutil.TempFile("", "workflowOutput_")
 	if err != nil {
-		pterm.Error.Printf("Temp file creation failed - disk’s playing hide and seek: %v", err)
-		return err
+		return handleError(err, fmt.Sprintf("Temp file creation failed - disk’s playing hide and seek: %v", err))
 	}
 	tmpFileName := tmpFile.Name()
 	tmpFile.Close()
@@ -400,264 +401,53 @@ func runWorkflow(scriptPort int, config *Configuration) error {
 	if config.InputFilePath != "" {
 		steps, err = loadInputFile(config.InputFilePath)
 		if err != nil {
-			pterm.Error.Printf("Input file load crashed - file has gone rogue: %v\n", err)
-			return err
+			return handleError(err, fmt.Sprintf("Input file load crashed - file has gone rogue: %v\n", err))
 		}
 	} else {
 		steps = config.Steps
 	}
+
 	for _, step := range steps {
 		if workflowFailed {
 			break
 		}
-		switch step.Type {
-		case "InitializeOutput":
-			err := e.InitializeOutput(tmpFileName, runAPI)
-			if err != nil {
-				pterm.Error.Printf("Output init failed - setup’s cursed: %v\n", err)
-				workflowFailed = true
-			}
-		case "Connect":
-			if err := e.Connect(); err != nil {
-				pterm.Error.Printf("Connection failed - terminal’s ghosting us: %v\n", err)
-				workflowFailed = true
-			}
-			e.WaitForField(30)
-		case "CheckValue":
-			v, err := e.GetValue(step.Coordinates.Row, step.Coordinates.Column, step.Coordinates.Length)
-			if err != nil {
-				pterm.Error.Printf("Value grab failed - screen’s being shy: %v\n", err)
-				workflowFailed = true
-				break
-			}
-			v = strings.TrimSpace(v)
-			if connect3270.Verbose {
-				pterm.Info.Printf("Retrieved value: %s\n", v)
-			}
-			if v != step.Text {
-				pterm.Warning.Printf("CheckValue mismatch - Expected: %s, Got: %s\n", step.Text, v)
-				workflowFailed = true
-			}
-		case "FillString":
-			if err := e.FillString(step.Coordinates.Row, step.Coordinates.Column, step.Text); err != nil {
-				pterm.Error.Printf("Text fill failed - keyboard’s drunk: %v\n", err)
-				workflowFailed = true
-			}
-		case "AsciiScreenGrab":
-			if err := e.AsciiScreenGrab(tmpFileName, runAPI); err != nil {
-				pterm.Error.Printf("Screen grab flopped - camera’s broken: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressEnter":
-			if err := e.Press(connect3270.Enter); err != nil {
-				pterm.Error.Printf("Enter press failed - button’s stuck: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressTab":
-			if err := e.Press(connect3270.Tab); err != nil {
-				pterm.Error.Printf("Tab press failed - spacing out: %v\n", err)
-				workflowFailed = true
-			}
-		case "Disconnect":
-			if err := e.Disconnect(); err != nil {
-				pterm.Error.Printf("Disconnect failed - clinging on: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressPF1":
-			if err := e.Press(connect3270.F1); err != nil {
-				pterm.Error.Printf("PF1 press failed - function’s funky: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressPF2":
-			if err := e.Press(connect3270.F2); err != nil {
-				pterm.Error.Printf("PF2 press failed - function’s funky: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressPF3":
-			if err := e.Press(connect3270.F3); err != nil {
-				pterm.Error.Printf("PF3 press failed - function’s funky: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressPF4":
-			if err := e.Press(connect3270.F4); err != nil {
-				pterm.Error.Printf("PF4 press failed - function’s funky: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressPF5":
-			if err := e.Press(connect3270.F5); err != nil {
-				pterm.Error.Printf("PF5 press failed - function’s funky: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressPF6":
-			if err := e.Press(connect3270.F6); err != nil {
-				pterm.Error.Printf("PF6 press failed - function’s funky: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressPF7":
-			if err := e.Press(connect3270.F7); err != nil {
-				pterm.Error.Printf("PF7 press failed - function’s funky: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressPF8":
-			if err := e.Press(connect3270.F8); err != nil {
-				pterm.Error.Printf("PF8 press failed - function’s funky: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressPF9":
-			if err := e.Press(connect3270.F9); err != nil {
-				pterm.Error.Printf("PF9 press failed - function’s funky: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressPF10":
-			if err := e.Press(connect3270.F10); err != nil {
-				pterm.Error.Printf("PF10 press failed - function’s funky: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressPF11":
-			if err := e.Press(connect3270.F11); err != nil {
-				pterm.Error.Printf("PF11 press failed - function’s funky: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressPF12":
-			if err := e.Press(connect3270.F12); err != nil {
-				pterm.Error.Printf("PF12 press failed - function’s funky: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressPF13":
-			if err := e.Press(connect3270.F13); err != nil {
-				pterm.Error.Printf("PF13 press failed - function’s funky: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressPF14":
-			if err := e.Press(connect3270.F14); err != nil {
-				pterm.Error.Printf("PF14 press failed - function’s funky: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressPF15":
-			if err := e.Press(connect3270.F15); err != nil {
-				pterm.Error.Printf("PF15 press failed - function’s funky: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressPF16":
-			if err := e.Press(connect3270.F16); err != nil {
-				pterm.Error.Printf("PF16 press failed - function’s funky: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressPF17":
-			if err := e.Press(connect3270.F17); err != nil {
-				pterm.Error.Printf("PF17 press failed - function’s funky: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressPF18":
-			if err := e.Press(connect3270.F18); err != nil {
-				pterm.Error.Printf("PF18 press failed - function’s funky: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressPF19":
-			if err := e.Press(connect3270.F19); err != nil {
-				pterm.Error.Printf("PF19 press failed - function’s funky: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressPF20":
-			if err := e.Press(connect3270.F20); err != nil {
-				pterm.Error.Printf("PF20 press failed - function’s funky: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressPF21":
-			if err := e.Press(connect3270.F21); err != nil {
-				pterm.Error.Printf("PF21 press failed - function’s funky: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressPF22":
-			if err := e.Press(connect3270.F22); err != nil {
-				pterm.Error.Printf("PF22 press failed - function’s funky: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressPF23":
-			if err := e.Press(connect3270.F23); err != nil {
-				pterm.Error.Printf("PF23 press failed - function’s funky: %v\n", err)
-				workflowFailed = true
-			}
-		case "PressPF24":
-			if err := e.Press(connect3270.F24); err != nil {
-				pterm.Error.Printf("PF24 press failed - function’s funky: %v\n", err)
-				workflowFailed = true
-			}
-		default:
-			pterm.Warning.Printf("Unknown step type: %s - what’s this sorcery?\n", step.Type)
+		err := executeStep(e, step, tmpFileName)
+		if err != nil {
+			workflowFailed = true
+			addError(err)
 		}
 	}
 
-	func runWorkflow(scriptPort int, config *Configuration) error {
-    startTime := time.Now()
-    atomic.AddInt64(&totalWorkflowsStarted, 1)
-    if connect3270.Verbose {
-        pterm.Info.Printf("Starting workflow for scriptPort %d\n", scriptPort)
-    }
-    storeLog(fmt.Sprintf("Starting workflow for scriptPort %d", scriptPort))
-    mutex.Lock()
-    activeWorkflows++
-    mutex.Unlock()
-    e := connect3270.NewEmulator(config.Host, config.Port, strconv.Itoa(scriptPort))
-    tmpFile, err := ioutil.TempFile("", "workflowOutput_")
-    if err != nil {
-        return handleError(err, fmt.Sprintf("Temp file creation failed - disk’s playing hide and seek: %v", err))
-    }
-    tmpFileName := tmpFile.Name()
-    tmpFile.Close()
-    e.InitializeOutput(tmpFileName, runAPI)
-    workflowFailed := false
-    var steps []Step
-    if config.InputFilePath != "" {
-        steps, err = loadInputFile(config.InputFilePath)
-        if err != nil {
-            return handleError(err, fmt.Sprintf("Input file load crashed - file has gone rogue: %v\n", err))
-        }
-    } else {
-        steps = config.Steps
-    }
+	mutex.Lock()
+	activeWorkflows--
+	mutex.Unlock()
+	duration := time.Since(startTime).Seconds()
+	timingsMutex.Lock()
+	workflowDurations = append(workflowDurations, duration)
+	timingsMutex.Unlock()
 
-    for _, step := range steps {
-        if workflowFailed {
-            break
-        }
-        err := executeStep(e, step, tmpFileName)
-        if err != nil {
-            workflowFailed = true
-            addError(err)
-        }
-    }
-
-    mutex.Lock()
-    activeWorkflows--
-    mutex.Unlock()
-    duration := time.Since(startTime).Seconds()
-    timingsMutex.Lock()
-    workflowDurations = append(workflowDurations, duration)
-    timingsMutex.Unlock()
-
-    if workflowFailed {
-        atomic.AddInt64(&totalWorkflowsFailed, 1)
-    } else {
-        if connect3270.Verbose {
-            storeLog(fmt.Sprintf("Workflow for scriptPort %d completed successfully", scriptPort))
-        }
-        if config.OutputFilePath != "" {
-            _ = os.Remove(config.OutputFilePath)
-            if err := os.Rename(tmpFileName, config.OutputFilePath); err != nil {
-                pid := os.Getpid()
-                uniqueOutputPath := fmt.Sprintf("%s.%d", config.OutputFilePath, pid)
-                if err2 := os.Rename(tmpFileName, uniqueOutputPath); err2 != nil {
-                    addError(err2)
-                } else if verbose {
-                    pterm.Info.Printf("Renamed to unique output file: %s\n", uniqueOutputPath)
-                }
-                return err
-            }
-        }
-        atomic.AddInt64(&totalWorkflowsCompleted, 1)
-    }
-    return nil
+	if workflowFailed {
+		atomic.AddInt64(&totalWorkflowsFailed, 1)
+	} else {
+		if connect3270.Verbose {
+			storeLog(fmt.Sprintf("Workflow for scriptPort %d completed successfully", scriptPort))
+		}
+		if config.OutputFilePath != "" {
+			_ = os.Remove(config.OutputFilePath)
+			if err := os.Rename(tmpFileName, config.OutputFilePath); err != nil {
+				pid := os.Getpid()
+				uniqueOutputPath := fmt.Sprintf("%s.%d", config.OutputFilePath, pid)
+				if err2 := os.Rename(tmpFileName, uniqueOutputPath); err2 != nil {
+					addError(err2)
+				} else if verbose {
+					pterm.Info.Printf("Renamed to unique output file: %s\n", uniqueOutputPath)
+				}
+				return err
+			}
+		}
+		atomic.AddInt64(&totalWorkflowsCompleted, 1)
+	}
+	return nil
 }
 
 func runAPIWorkflow() {
@@ -823,52 +613,53 @@ func printBanner() {
 }
 
 func main() {
-    flag.Parse()
-    printBanner()
-    mutex.Lock()
-    lastUsedPort = startPort
-    mutex.Unlock()
-    if *showVersion {
-        pterm.Info.Printf("3270Connect Version: %s \n", version)
-        os.Exit(0)
-    }
-    if showHelp {
-        pterm.Info.Printf("3270Connect Version: %s - Here’s the manual!\n", version)
-        flag.Usage()
-        os.Exit(0)
-    }
-    setGlobalSettings()
-    if concurrent > 1 || runtimeDuration > 0 {
-        go runDashboard()
-    }
-    go monitorSystemUsage()
-    if runApp != "" {
-        switch runApp {
-        case "1":
-            app1.RunApplication(runAppPort)
-            return
-        case "2":
-            app2.RunApplication(runAppPort)
-            return
-        default:
-            pterm.Error.Printf("Invalid runApp value: %s - Did you mean 1 or 2?\n", runApp)
-        }
-    }
-    config := loadConfiguration(configFile)
-    if runAPI {
-        runAPIWorkflow()
-    } else {
-        if concurrent > 1 {
-            runConcurrentWorkflows(config)
-        } else {
-            runWorkflow(7000, config)
-        }
-        if concurrent > 1 && dashboardStarted {
-            pterm.Info.Printf("All workflows completed but the dashboard is still running on port %d. Press Ctrl+C to exit.", dashboardPort)
-            select {}
-        }
-    }
-    showErrors()
+	flag.Parse()
+	printBanner()
+	mutex.Lock()
+	lastUsedPort = startPort
+	mutex.Unlock()
+	programStart = time.Now()
+	if *showVersion {
+		pterm.Info.Printf("3270Connect Version: %s \n", version)
+		os.Exit(0)
+	}
+	if showHelp {
+		pterm.Info.Printf("3270Connect Version: %s - Here’s the manual!\n", version)
+		flag.Usage()
+		os.Exit(0)
+	}
+	setGlobalSettings()
+	if concurrent > 1 || runtimeDuration > 0 {
+		go runDashboard()
+	}
+	go monitorSystemUsage()
+	if runApp != "" {
+		switch runApp {
+		case "1":
+			app1.RunApplication(runAppPort)
+			return
+		case "2":
+			app2.RunApplication(runAppPort)
+			return
+		default:
+			pterm.Error.Printf("Invalid runApp value: %s - Did you mean 1 or 2?\n", runApp)
+		}
+	}
+	config := loadConfiguration(configFile)
+	if runAPI {
+		runAPIWorkflow()
+	} else {
+		if concurrent > 1 {
+			runConcurrentWorkflows(config)
+		} else {
+			runWorkflow(7000, config)
+		}
+		if concurrent > 1 && dashboardStarted {
+			pterm.Info.Printf("All workflows completed but the dashboard is still running on port %d. Press Ctrl+C to exit.", dashboardPort)
+			select {}
+		}
+	}
+	showErrors()
 }
 
 func setGlobalSettings() {
@@ -1142,7 +933,7 @@ func runConcurrentWorkflows(config *Configuration) {
 		}).Render()
 
 	// Note: If you already print the dashboard message in main, you might remove this duplicate.
-	storeLog("All workflows completed or timed out")
+	storeLog("All workflows completed")
 }
 
 // Helper functions for summary status
@@ -1353,6 +1144,11 @@ func runDashboard() {
 			sel30 = "selected"
 		}
 		agg := aggregateMetrics()
+		var extended []ExtendedMetrics
+		for _, m := range metricsList {
+			extended = append(extended, m.extend())
+		}
+		extendedJSON, _ := json.Marshal(extended)
 		data := struct {
 			ActiveWorkflows                 int
 			TotalWorkflowsStarted           int64
@@ -1364,6 +1160,8 @@ func runDashboard() {
 			AutoRefreshEnabled              bool
 			RefreshPeriod                   string
 			MetricsJSON                     string
+			ExtendedMetricsList             []ExtendedMetrics
+			ExtendedJSON                    string
 		}{
 			ActiveWorkflows:         agg.ActiveWorkflows,
 			TotalWorkflowsStarted:   agg.TotalWorkflowsStarted,
@@ -1379,6 +1177,8 @@ func runDashboard() {
 			AutoRefreshEnabled:      autoRefresh == "true",
 			RefreshPeriod:           refreshPeriod,
 			MetricsJSON:             string(metricsJSON),
+			ExtendedMetricsList:     extended,
+			ExtendedJSON:            string(extendedJSON),
 		}
 		if err := dashboardTemplate.Execute(w, data); err != nil {
 			pterm.Error.Printf("Dashboard template execution failed - HTML’s throwing a tantrum: %v\n", err)
@@ -1407,6 +1207,14 @@ type Metrics struct {
 	CPUUsage                []float64 `json:"cpuUsage"`
 	MemoryUsage             []float64 `json:"memoryUsage"`
 	Params                  string    `json:"params"`
+	RuntimeDuration         int       `json:"runtimeDuration"`
+	StartTimestamp          int64     `json:"startTimestamp"`
+}
+
+type ExtendedMetrics struct {
+	Metrics
+	Status   string `json:"status"`
+	TimeLeft int64  `json:"timeLeft"`
 }
 
 func updateMetricsFile() {
@@ -1441,6 +1249,8 @@ func updateMetricsFile() {
 		CPUUsage:                cpuHistory,
 		MemoryUsage:             memHistory,
 		Params:                  parameters,
+		RuntimeDuration:         runtimeDuration,
+		StartTimestamp:          programStart.Unix(),
 	}
 	data, err := json.Marshal(metrics)
 	if err != nil {
@@ -1493,8 +1303,27 @@ func aggregateMetrics() Metrics {
 		agg.Durations = append(agg.Durations, m.Durations...)
 		agg.CPUUsage = append(agg.CPUUsage, m.CPUUsage...)
 		agg.MemoryUsage = append(agg.MemoryUsage, m.MemoryUsage...)
+		agg.RuntimeDuration = m.RuntimeDuration // Keep last or overwrite
+		agg.StartTimestamp = m.StartTimestamp
 	}
 	return agg
+}
+
+func (m Metrics) extend() ExtendedMetrics {
+	timeElapsed := time.Now().Unix() - m.StartTimestamp
+	timeLeft := int64(m.RuntimeDuration) - timeElapsed
+	if timeLeft < 0 {
+		timeLeft = 0
+	}
+	status := "Completed"
+	if timeLeft > 0 {
+		status = "Running"
+	}
+	return ExtendedMetrics{
+		Metrics:  m,
+		Status:   status,
+		TimeLeft: timeLeft,
+	}
 }
 
 func monitorSystemUsage() {
@@ -1654,4 +1483,35 @@ func getActiveWorkflows() int {
 	mutex.Lock()
 	defer mutex.Unlock()
 	return activeWorkflows
+}
+
+func showErrors() {
+	errorMutex.Lock()
+	defer errorMutex.Unlock()
+	if len(errorList) == 0 {
+		pterm.Info.Println("No errors encountered during the workflows.")
+		return
+	}
+
+	pterm.Error.Println("Errors Summary:")
+	errorCount := make(map[string]int)
+	for _, err := range errorList {
+		errorCount[err.Error()]++
+	}
+
+	for errMsg, count := range errorCount {
+		pterm.Error.Printf("%d occurrence(s) of: %s\n", count, errMsg)
+	}
+}
+
+func handleError(err error, message string) error {
+	pterm.Error.Println(message)
+	addError(err)
+	return err
+}
+
+func addError(err error) {
+	errorMutex.Lock()
+	defer errorMutex.Unlock()
+	errorList = append(errorList, err)
 }
