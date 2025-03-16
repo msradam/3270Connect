@@ -1,24 +1,26 @@
 site_name: 3270Connect
 site_description: User Guide for the 3270Connect Command-Line Utility
 site_author: 3270.io
-copyright: '© 2023-2024 3270.io'
-site_url: https://3270.io
+copyright: "© 2023-2024 3270.io"
+site_url: https://3270io.github.io/3270Connect
 repo_url: https://github.com/3270io/3270Connect
-#edit_uri: edit/master/docs/
-docs_dir: docs
-site_dir: app/static
+edit_uri: edit/main/docs/
+
+# Default directory for MkDocs output (GitHub Pages uses `gh-pages` branch)
+site_dir: site
+
 theme:
   name: material
-  logo: logo.png
+  logo: assets/logo.png  # Ensure this file exists in the `docs/assets/` folder
   palette:
     primary: teal
   features:
-  - navigation.instant
-  - navigation.instant.progress
-  - toc.integrate
-  - navigation.expand
-  - navigation.top
-  - navigation.footer
+    - navigation.instant
+    - navigation.instant.progress
+    - toc.integrate
+    - navigation.expand
+    - navigation.top
+    - navigation.footer
 
 nav:
   - Home: index.md
@@ -30,14 +32,13 @@ nav:
 plugins:
   - search
   - mkdocs-video:
-      is_video: True
-      video_autoplay: False
+      is_video: true
+      video_autoplay: false
 
 markdown_extensions:
-  - codehilite:
-      guess_lang: false
   - admonition
   - toc:
+      permalink: true
       toc_depth: 3
   - pymdownx.highlight:
       use_pygments: true
@@ -47,18 +48,16 @@ markdown_extensions:
   - pymdownx.caret
   - pymdownx.mark
   - pymdownx.tilde
+  - pymdownx.tasklist:
+      clickable: true
   - attr_list
   - def_list
-  - pymdownx.tasklist:
-  - meta
-  - pymdownx.emoji:
-      emoji_index: !!python/name:materialx.emoji.twemoji
-      emoji_generator: !!python/name:materialx.emoji.to_svg
-  - footnotes
   - pymdownx.snippets:
-      base_path:
-        - docs
-      url_download:
-        - true
+      base_path: docs
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - footnotes
+
 extra:
   version: 1.0.7
