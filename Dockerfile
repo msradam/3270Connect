@@ -9,8 +9,11 @@ FROM golang:1.23 AS builder-linux
 ENV GOARCH=amd64
 ENV GOOS=linux
 
-# Set the working directory
 WORKDIR /app
+
+# Copy Go module files first (cache optimization)
+COPY go.mod go.sum ./
+RUN go mod download
 
 # Copy the Go source code
 COPY . .
@@ -27,13 +30,16 @@ FROM golang:1.23 AS builder-windows
 ENV GOARCH=amd64
 ENV GOOS=windows
 
-# Set the working directory
 WORKDIR /app
+
+# Copy Go module files first (cache optimization)
+COPY go.mod go.sum ./
+RUN go mod download
 
 # Copy the Go source code
 COPY . .
 
-# Build the Windows binary using CMD instead of PowerShell
+# Build the Windows binary using CMD
 RUN cmd /C "go build -o 3270Connect.exe go3270Connect.go"
 
 #############################
@@ -60,14 +66,3 @@ RUN chmod +x /usr/local/bin/3270Connect
 
 # Define the entrypoint for the Linux container
 ENTRYPOINT ["/usr/local/bin/3270Connect"]
-
-#############################
-# Final stage for Windows
-#############################
-FROM mcr.microsoft.com/windows/servercore:ltsc2019 AS final-windows
-
-# Copy the Windows binary from the builder
-COPY --from=builder-windows /app/3270Connect.exe C:\3270Connect.exe
-
-# Define the entrypoint for the Windows container
-ENTRYPOINT ["C:\\3270Connect.exe"]
