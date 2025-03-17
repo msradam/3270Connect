@@ -97,8 +97,7 @@ jobs:
           context: .
           push: true
           platforms: linux/amd64
-          file: ./Dockerfile
-          target: final-linux
+          file: ./Dockerfile.linux
           tags: ghcr.io/${{ github.repository_owner }}/3270connect:linux-latest
 
       - name: Build and Push Windows Docker Image
@@ -107,8 +106,7 @@ jobs:
           context: .
           push: true
           platforms: windows/amd64
-          file: ./Dockerfile
-          target: final-windows
+          file: ./Dockerfile.windows
           tags: ghcr.io/${{ github.repository_owner }}/3270connect:windows-latest
 
   build-and-deploy-mkdocs:
