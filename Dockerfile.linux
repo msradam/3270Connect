@@ -1,11 +1,34 @@
-# Use the official Golang base image
-FROM golang:1.20
+#############################
+# Linux Dockerfile
+#############################
+FROM golang:1.23 AS builder-linux
 
-# Set the working directory
+# Set environment variables for Linux
+ENV GOARCH=amd64
+ENV GOOS=linux
+
 WORKDIR /app
 
-# Copy the binary into the container
-COPY 3270Connect .
+# Copy Go module files first (cache optimization)
+COPY go.mod go.sum ./
+RUN go mod download
 
-# Set the entry point
-ENTRYPOINT ["./3270Connect"]
+# Copy the Go source code
+COPY . .
+
+# Build the Linux binary
+RUN go build -o 3270Connect-linux go3270Connect.go
+
+#############################
+# Final stage for Linux
+#############################
+FROM alpine:latest AS final-linux
+
+# Copy the Linux binary from the builder
+COPY --from=builder-linux /app/3270Connect-linux /usr/local/bin/3270Connect
+
+# Make the binary executable
+RUN chmod +x /usr/local/bin/3270Connect
+
+# Define the entrypoint for the Linux container
+ENTRYPOINT ["/usr/local/bin/3270Connect"]
