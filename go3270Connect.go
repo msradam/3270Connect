@@ -32,7 +32,7 @@ import (
 	"github.com/shirou/gopsutil/mem"
 )
 
-const version = "1.3.1"
+const version = "1.3.2"
 
 var errorList []error
 var errorMutex sync.Mutex
@@ -89,6 +89,8 @@ var memHistory []float64
 
 var showVersion = flag.Bool("version", false, "Show the application version")
 
+var disableProgressBar bool
+
 var runAppPort int
 
 type LogEntry struct {
@@ -121,6 +123,7 @@ func init() {
 	flag.IntVar(&runAppPort, "runApp-port", 3270, "Port for the sample 3270 app")
 	flag.IntVar(&startPort, "startPort", 5000, "Starting port for workflow connections")
 	flag.IntVar(&dashboardPort, "dashboardPort", 9200, "Port for the dashboard server")
+	flag.BoolVar(&disableProgressBar, "disableProgressBar", false, "Disable progress bar and show INFO log messages instead")
 
 	// Set up pterm with a funky theme
 	pterm.DefaultSection.Style = pterm.NewStyle(pterm.FgCyan, pterm.Bold)
@@ -674,137 +677,125 @@ func openDashboardEmbedded() {
 	}
 }
 
+var stopTicker chan struct{}
+
 func runConcurrentWorkflows(config *Configuration) {
 	overallStart := time.Now()
 	semaphore := make(chan struct{}, concurrent)
 	var wg sync.WaitGroup
 
-	// Initialize MultiPrinter for all output
-	multi := pterm.DefaultMultiPrinter
+	var multi pterm.MultiPrinter
+	var durationBar *pterm.ProgressbarPrinter
+	if disableProgressBar {
+		pterm.Info.Println("Progress bar disabled. Showing INFO log messages instead.")
+	} else {
+		// Initialize MultiPrinter for all output
+		multi = pterm.DefaultMultiPrinter
 
-	// Define a fixed width for titles to align text
-	const titleWidth = 30
+		// Define a fixed width for titles to align text
+		const titleWidth = 30
 
-	// Uniform progress bars
-	durationBar, _ := pterm.DefaultProgressbar.
-		WithTotal(runtimeDuration).
-		WithTitle(pterm.Sprintf("%-*s", titleWidth, "  Run Duration  ")).
-		WithWriter(multi.NewWriter()).
-		WithBarCharacter("-").
-		WithBarStyle(pterm.NewStyle(pterm.FgCyan)).
-		WithShowPercentage(true).
-		WithShowCount(false).
-		WithShowElapsedTime(true).
-		Start()
+		// Uniform progress bars
+		durationBar, _ = pterm.DefaultProgressbar.
+			WithTotal(runtimeDuration).
+			WithTitle(pterm.Sprintf("%-*s", titleWidth, "  Run Duration  ")).
+			WithWriter(multi.NewWriter()).
+			WithBarCharacter("-").
+			WithBarStyle(pterm.NewStyle(pterm.FgCyan)).
+			WithShowPercentage(true).
+			WithShowCount(false).
+			WithShowElapsedTime(true).
+			Start()
 
-	activeBar, _ := pterm.DefaultProgressbar.
-		WithTotal(concurrent).
-		WithTitle(pterm.Sprintf("%-*s", titleWidth, "Active vUsers")).
-		WithWriter(multi.NewWriter()).
-		WithBarCharacter("█").
-		WithBarStyle(pterm.NewStyle(pterm.FgCyan)).
-		WithShowPercentage(true).
-		WithShowCount(false).
-		WithShowElapsedTime(true).
-		Start()
+		activeBar, _ := pterm.DefaultProgressbar.
+			WithTotal(concurrent).
+			WithTitle(pterm.Sprintf("%-*s", titleWidth, "Active vUsers")).
+			WithWriter(multi.NewWriter()).
+			WithBarCharacter("█").
+			WithBarStyle(pterm.NewStyle(pterm.FgCyan)).
+			WithShowPercentage(true).
+			WithShowCount(false).
+			WithShowElapsedTime(true).
+			Start()
 
-	cpuBar, _ := pterm.DefaultProgressbar.
-		WithTotal(100).
-		WithTitle(pterm.Sprintf("%-*s", titleWidth, "CPU Usage")).
-		WithWriter(multi.NewWriter()).
-		WithBarCharacter("█").
-		WithBarStyle(pterm.NewStyle(pterm.FgGreen)).
-		WithShowPercentage(true).
-		WithShowCount(false).
-		WithShowElapsedTime(true).
-		Start()
+		cpuBar, _ := pterm.DefaultProgressbar.
+			WithTotal(100).
+			WithTitle(pterm.Sprintf("%-*s", titleWidth, "CPU Usage")).
+			WithWriter(multi.NewWriter()).
+			WithBarCharacter("█").
+			WithBarStyle(pterm.NewStyle(pterm.FgGreen)).
+			WithShowPercentage(true).
+			WithShowCount(false).
+			WithShowElapsedTime(true).
+			Start()
 
-	memBar, _ := pterm.DefaultProgressbar.
-		WithTotal(100).
-		WithTitle(pterm.Sprintf("%-*s", titleWidth, "Memory Usage")).
-		WithWriter(multi.NewWriter()).
-		WithBarCharacter("█").
-		WithBarStyle(pterm.NewStyle(pterm.FgGreen)).
-		WithShowPercentage(true).
-		WithShowCount(false).
-		WithShowElapsedTime(true).
-		Start()
+		memBar, _ := pterm.DefaultProgressbar.
+			WithTotal(100).
+			WithTitle(pterm.Sprintf("%-*s", titleWidth, "Memory Usage")).
+			WithWriter(multi.NewWriter()).
+			WithBarCharacter("█").
+			WithBarStyle(pterm.NewStyle(pterm.FgGreen)).
+			WithShowPercentage(true).
+			WithShowCount(false).
+			WithShowElapsedTime(true).
+			Start()
 
-	// Start the MultiPrinter
-	multi.Start()
+		// Start the MultiPrinter
+		// Channel to stop the progress bar updates
+		stopTicker = make(chan struct{})
+		// Channel to stop the progress bar updates
+		stopTicker := make(chan struct{})
 
-	// Group durationBar and activeBar in a table box
-	//pterm.DefaultTable.
-	//	WithHasHeader(false).
-	//	WithBoxed(true).
-	//	WithData(pterm.TableData{
-	//		{durationBar.Title, activeBar.Title},
-	//		{fmt.Sprintf("%d/%d", durationBar.Current, durationBar.Total), fmt.Sprintf("%d/%d", activeBar.Current, activeBar.Total)},
-	//	}).
-	//	Render()
-
-	// Group cpuBar and memBar in a different table box
-	//pterm.DefaultTable.
-	//	WithHasHeader(false).
-	//	WithBoxed(true).
-	//	WithData(pterm.TableData{
-	//		{cpuBar.Title, memBar.Title},
-	//		{fmt.Sprintf("%d/%d", cpuBar.Current, cpuBar.Total), fmt.Sprintf("%d/%d", memBar.Current, memBar.Total)},
-	//	}).
-	//	Render()
-
-	// Channel to stop the progress bar updates
-	stopTicker := make(chan struct{})
-
-	// Goroutine for real-time progress bar updates
-	go func() {
-		ticker := time.NewTicker(1 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				elapsed := int(time.Since(overallStart).Seconds())
-				if durationBar != nil {
-					durationBar.Current = min(elapsed, runtimeDuration)
-					if elapsed < runtimeDuration {
-						durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Run Duration (%ds left)", runtimeDuration-elapsed)))
-					} else {
-						durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, "Run Duration (Completed)"))
+		// Goroutine for real-time progress bar updates
+		go func() {
+			ticker := time.NewTicker(1 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					elapsed := int(time.Since(overallStart).Seconds())
+					if durationBar != nil {
+						durationBar.Current = min(elapsed, runtimeDuration)
+						if elapsed < runtimeDuration {
+							durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Run Duration (%ds left)", runtimeDuration-elapsed)))
+						} else {
+							durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, "Run Duration (Completed)"))
+						}
 					}
-				}
-				if cpuBar != nil {
-					cpuPercent, _ := cpu.Percent(0, false)
-					if len(cpuPercent) > 0 {
-						cpuBar.Current = int(cpuPercent[0])
+					if cpuBar != nil {
+						cpuPercent, _ := cpu.Percent(0, false)
+						if len(cpuPercent) > 0 {
+							cpuBar.Current = int(cpuPercent[0])
+						}
 					}
-				}
-				if memBar != nil {
-					memStats, _ := mem.VirtualMemory()
-					if memStats != nil {
-						memBar.Current = int(memStats.UsedPercent)
+					if memBar != nil {
+						memStats, _ := mem.VirtualMemory()
+						if memStats != nil {
+							memBar.Current = int(memStats.UsedPercent)
+						}
 					}
+					if activeBar != nil {
+						activeBar.Current = len(semaphore)
+						activeBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Active vUsers (%d/%d)", len(semaphore), concurrent)))
+					}
+					// Log status update
+					cpuPercentLog, _ := cpu.Percent(0, false)
+					memStatsLog, _ := mem.VirtualMemory()
+					cpuVal := 0.0
+					if len(cpuPercentLog) > 0 {
+						cpuVal = cpuPercentLog[0]
+					}
+					memVal := 0.0
+					if memStatsLog != nil {
+						memVal = memStatsLog.UsedPercent
+					}
+					storeLog(fmt.Sprintf("Elapsed: %d, Active workflows: %d, CPU usage: %.2f%%, Memory usage: %.2f%%", elapsed, len(semaphore), cpuVal, memVal))
+				case <-stopTicker:
+					return
 				}
-				if activeBar != nil {
-					activeBar.Current = len(semaphore)
-					activeBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Active vUsers (%d/%d)", len(semaphore), concurrent)))
-				}
-				// Log status update
-				cpuPercentLog, _ := cpu.Percent(0, false)
-				memStatsLog, _ := mem.VirtualMemory()
-				cpuVal := 0.0
-				if len(cpuPercentLog) > 0 {
-					cpuVal = cpuPercentLog[0]
-				}
-				memVal := 0.0
-				if memStatsLog != nil {
-					memVal = memStatsLog.UsedPercent
-				}
-				storeLog(fmt.Sprintf("Elapsed: %d, Active workflows: %d, CPU usage: %.2f%%, Memory usage: %.2f%%", elapsed, len(semaphore), cpuVal, memVal))
-			case <-stopTicker:
-				return
 			}
-		}
-	}()
+		}()
+	}
 
 	// Scheduling workflows using nested loops
 	for time.Since(overallStart) < time.Duration(runtimeDuration)*time.Second {
@@ -817,6 +808,11 @@ func runConcurrentWorkflows(config *Configuration) {
 			batchSize := min(freeSlots, config.RampUpBatchSize)
 			storeLog(fmt.Sprintf("Increasing batch by %d, current size is %d, new total target is %d",
 				batchSize, len(semaphore), len(semaphore)+batchSize))
+			if disableProgressBar {
+				pterm.Info.Println(fmt.Sprintf("Increasing batch by %d, current size is %d, new total target is %d",
+					batchSize, len(semaphore), len(semaphore)+batchSize))
+			}
+
 			for i := 0; i < batchSize; i++ {
 				semaphore <- struct{}{}
 				wg.Add(1)
@@ -837,30 +833,43 @@ func runConcurrentWorkflows(config *Configuration) {
 			memStats, _ := mem.VirtualMemory()
 			storeLog(fmt.Sprintf("Currently active workflows: %d, CPU usage: %.2f%%, memory usage: %.2f%%",
 				len(semaphore), cpuPercent[0], memStats.UsedPercent))
+			if disableProgressBar {
+				pterm.Info.Println(fmt.Sprintf("Currently active workflows: %d, CPU usage: %.2f%%, memory usage: %.2f%%",
+					len(semaphore), cpuPercent[0], memStats.UsedPercent))
+			}
 			time.Sleep(time.Duration(config.RampUpDelay * float64(time.Second)))
 		}
 		cpuPercent, _ := cpu.Percent(0, false)
 		memStats, _ := mem.VirtualMemory()
 		storeLog(fmt.Sprintf("Currently active workflows: %d, CPU usage: %.2f%%, memory usage: %.2f%%",
 			len(semaphore), cpuPercent[0], memStats.UsedPercent))
+		if disableProgressBar {
+			pterm.Info.Println(fmt.Sprintf("Currently active workflows: %d, CPU usage: %.2f%%, memory usage: %.2f%%",
+				len(semaphore), cpuPercent[0], memStats.UsedPercent))
+		}
 		time.Sleep(time.Duration(config.RampUpDelay * float64(time.Second)))
 	}
 
-	multi.Stop()
+	if !disableProgressBar {
+		multi.Stop()
+	}
 
 	// Notify that no new workflows will be scheduled
 	pterm.Info.Println("Run duration complete. Waiting for current workflows to finish...")
 	wg.Wait()
 	storeLog("All workflows completed after runtimeDuration ended.")
 
-	// Stop the progress bar updates
-	close(stopTicker)
+	if !disableProgressBar {
+		// Stop the progress bar updates
+		stopTicker <- struct{}{}
 
-	// Final update to duration bar
-	elapsed := int(time.Since(overallStart).Seconds())
-	durationBar.WithTotal(elapsed)
-	durationBar.Current = elapsed
-	durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Run Duration (%ds elapsed)", elapsed)))
+		// Final update to duration bar
+		elapsed := int(time.Since(overallStart).Seconds())
+		durationBar.WithTotal(elapsed)
+		durationBar.Current = elapsed
+		const titleWidth = 30
+		durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Run Duration (%ds elapsed)", elapsed)))
+	}
 
 	// Calculate averages for CPU and Memory usage
 	var avgCPU, avgMem float64
@@ -905,6 +914,7 @@ func runConcurrentWorkflows(config *Configuration) {
 	pterm.Success.Println("All workflows wrapped up - Time for a victory lap!")
 
 	// Display summary report
+	elapsed := int(time.Since(overallStart).Seconds())
 	pterm.DefaultSection.WithStyle(pterm.NewStyle(pterm.FgCyan)).Println("Run Summary - Performance Report")
 	pterm.DefaultTable.
 		WithHasHeader().
