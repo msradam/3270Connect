@@ -8,6 +8,12 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script> <!-- added jQuery dependency -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/dist/tippy.css">
+  <script src="https://unpkg.com/@popperjs/core@2"></script>
+  <script src="https://unpkg.com/tippy.js@6"></script>
   <style>
     body { padding-top: 70px; padding-bottom: 70px; color: black; }
     .chart-container { margin: auto; height: 400px; width: 600px; }
@@ -34,36 +40,35 @@
       </div>
     </div>
   </nav>
-  <!-- ...existing content... -->
   <div class="container my-4">
     <div class="p-5 mb-4 bg-light rounded-3">
       <div class="container-fluid py-3">
-        <h1 class="display-5 fw-bold">3270Connect Aggregated Metrics</h1>
-        <p class="col-md-8 fs-4">Per PID Metrics</p>
+        <h1 class="display-5 fw-bold" data-tippy-content="This section displays aggregated metrics for all workflows.">3270Connect Aggregated Metrics</h1>
+        <p class="col-md-8 fs-4" data-tippy-content="Metrics are grouped by Process ID (PID).">Per PID Metrics</p>
         <div class="d-flex flex-wrap justify-content-around">
-          <div class="p-2 text-center">
+          <div class="p-2 text-center" data-tippy-content="Number of workflows currently running.">
             <h5>Active Workflows</h5>
             <p class="mb-0">{{.ActiveWorkflows}}</p>
           </div>
-          <div class="p-2 text-center">
+          <div class="p-2 text-center" data-tippy-content="Total number of workflows that have been started.">
             <h5>Total Workflows Started</h5>
             <p class="mb-0">{{.TotalWorkflowsStarted}}</p>
           </div>
-          <div class="p-2 text-center">
+          <div class="p-2 text-center" data-tippy-content="Total number of workflows that have completed successfully.">
             <h5>Total Workflows Completed</h5>
             <p class="mb-0">{{.TotalWorkflowsCompleted}}</p>
           </div>
-          <div class="p-2 text-center">
+          <div class="p-2 text-center" data-tippy-content="Total number of workflows that have failed.">
             <h5>Total Workflows Failed</h5>
             <p class="mb-0">{{.TotalWorkflowsFailed}}</p>
           </div>
         </div>
         <form id="autoRefreshForm" method="get" class="mt-3">
-          <div class="form-check form-switch">
+          <div class="form-check form-switch" data-tippy-content="Enable or disable automatic page refresh.">
             <input class="form-check-input" type="checkbox" id="autoRefreshToggle" name="autoRefresh" value="true" {{.Checked}} onchange="this.form.submit()">
             <label class="form-check-label" for="autoRefreshToggle">Auto Refresh</label>
           </div>
-          <div class="mt-2">
+          <div class="mt-2" data-tippy-content="Set the interval for automatic page refresh in seconds.">
             <label for="refreshPeriodSelect" class="form-label">Refresh Period (seconds):</label>
             <select class="form-select w-auto" id="refreshPeriodSelect" name="refreshPeriod" onchange="this.form.submit()">
               <option value="1" {{.Sel1}}>1</option>
@@ -78,20 +83,25 @@
     </div>
     <div class="row">
       <div class="col-md-6">
-        <div class="chart-container">
+        <div class="chart-container" data-tippy-content="This chart shows the duration of workflows over time.">
           <canvas id="durationChart"></canvas>
         </div>
       </div>
       <div class="col-md-6">
-        <div class="chart-container">
+        <div class="chart-container" data-tippy-content="This chart shows CPU and memory usage over time.">
           <canvas id="cpuMemChart"></canvas>
         </div>
       </div>
     </div>
     <div class="row mt-3">
-      <div class="col-md-12" id="pidParamsContainerOnDashboard">
+      <div class="col-md-12" id="pidParamsContainerOnDashboard" data-tippy-content="Details of workflows grouped by Process ID (PID).">
         <!-- Bars for process metrics will be rendered here -->
       </div>
+    </div>
+    <div class="text-center mt-4">
+      <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#startProcessModal" data-tippy-content="Click to start a new 3270Connect process.">
+        Start 3270Connect Process
+      </button>
     </div>
   </div>
   <!-- Tooltip for notifications -->
@@ -100,7 +110,7 @@
     <div class="tooltip-inner"></div>
   </div>
   <!-- Modal for Console Logs -->
-  <div class="modal fade" id="consoleModal" tabindex="-1" aria-labelledby="consoleModalLabel" aria-hidden="true">
+  <div class="modal fade" id="consoleModal" tabindex="-1" aria-labelledby="consoleModalLabel" inert style="display: none;">
     <div class="modal-dialog modal-lg">
       <div class="modal-content">
         <div class="modal-header">
@@ -134,6 +144,45 @@
               </select>
             </div>
             </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Modal for Starting 3270Connect Process -->
+  <div class="modal fade" id="startProcessModal" tabindex="-1" aria-labelledby="startProcessModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="startProcessModalLabel">Start 3270Connect Process</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="startProcessForm" enctype="multipart/form-data">
+            <div class="mb-3">
+              <label for="configFileInput" class="form-label">Configuration File</label>
+              <input type="file" class="form-control" id="configFileInput" name="configFile" accept=".json" required>
+            </div>
+            <div class="mb-3">
+              <label for="concurrentInput" class="form-label">Concurrent Workflows</label>
+              <input type="number" class="form-control" id="concurrentInput" name="concurrent" placeholder="Enter number of concurrent workflows" value="5" required>
+            </div>
+            <div class="mb-3">
+              <label for="runtimeInput" class="form-label">Runtime Duration (seconds)</label>
+              <input type="number" class="form-control" id="runtimeInput" name="runtime" placeholder="Enter runtime duration" value="180" required>
+            </div>
+            <div class="mb-3">
+              <label for="startPortInput" class="form-label">Starting Port</label>
+              <input type="number" class="form-control" id="startPortInput" name="startPort" placeholder="Enter starting port" value="5000" required>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="headlessInput" name="headless" checked>
+              <label class="form-check-label" for="headlessInput">Headless Mode</label>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          <button type="button" class="btn btn-primary" onclick="start3270ConnectProcess()">Start Process</button>
         </div>
       </div>
     </div>
@@ -207,7 +256,7 @@
     var maxLen = Math.max(aggregatedCPU.length, hostMemory.length);
     var labels2 = [];
     for (var i = 0; i < maxLen; i++) { labels2.push(" " + (i + 1)); }
-    var cpuMemDatasets = [{
+    var cpuMemDatasets = [ {
       label: "Total CPU Usage",
       data: new Array(maxLen - aggregatedCPU.length).fill(null).concat(aggregatedCPU),
       borderColor: "rgba(75, 192, 192, 1)",
@@ -413,6 +462,35 @@
     consoleModal.show();
     loadLogs();
   }
+
+  function start3270ConnectProcess() {
+    const form = document.getElementById('startProcessForm');
+    const formData = new FormData(form);
+
+    fetch('/start-process', {
+      method: 'POST',
+      body: formData
+    })
+    .then(response => {
+      if (response.ok) {
+        toastr.success('Process started successfully!');
+        // Close the modal after successful submission
+        var modalEl = document.getElementById("startProcessModal");
+        var modalInstance = bootstrap.Modal.getInstance(modalEl);
+        if (modalInstance) {
+          modalInstance.hide();
+        }
+      } else {
+        return response.text().then((text) => {
+          toastr.error(`Failed to start process: ${String(text)}`);
+        });
+      }
+    })
+    .catch(error => {
+      console.error('Error starting process:', error);
+      toastr.error(`An error occurred while starting the process: ${String(error.message)}`);
+    });
+  }
 </script>
 <script>
   // Create a mapping for extended metrics keyed by PID
@@ -423,6 +501,36 @@
         timeLeft: "{{.TimeLeft}}"
       },
     {{end}}
+  };
+</script>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    // Ensure Tippy.js is initialized
+    tippy('[data-tippy-content]', {
+      placement: 'top',
+      animation: 'fade',
+      theme: 'light',
+    });
+  });
+</script>
+<script>
+  // Set toastr options
+  toastr.options = {
+    "closeButton": false,
+    "debug": false,
+    "newestOnTop": true,
+    "progressBar": true,
+    "positionClass": "toast-top-right",
+    "preventDuplicates": false,
+    "onclick": null,
+    "showDuration": "300",
+    "hideDuration": "1000",
+    "timeOut": "5000",
+    "extendedTimeOut": "1000",
+    "showEasing": "swing",
+    "hideEasing": "linear",
+    "showMethod": "fadeIn",
+    "hideMethod": "fadeOut"
   };
 </script>
 </body>

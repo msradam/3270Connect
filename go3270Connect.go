@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -1059,6 +1060,9 @@ func runDashboard() {
 	}
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFiles))))
 
+	// Register the start-process endpoint
+	http.HandleFunc("/start-process", startProcessHandler)
+
 	addr := fmt.Sprintf(":%d", dashboardPort)
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -1537,4 +1541,72 @@ func addError(err error) {
 	errorMutex.Lock()
 	defer errorMutex.Unlock()
 	errorList = append(errorList, err)
+}
+
+// Add a new endpoint to handle the process initiation request
+func startProcessHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse the multipart form to handle file uploads
+	if err := r.ParseMultipartForm(10 << 20); err != nil { // 10 MB max file size
+		http.Error(w, "Failed to parse form data", http.StatusBadRequest)
+		return
+	}
+
+	// Retrieve the uploaded file
+	file, handler, err := r.FormFile("configFile")
+	if err != nil {
+		http.Error(w, "Failed to retrieve file", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Save the uploaded file to a known location
+	tempFilePath := filepath.Join(os.TempDir(), handler.Filename)
+	tempFile, err := os.Create(tempFilePath)
+	if err != nil {
+		http.Error(w, "Failed to save file", http.StatusInternalServerError)
+		return
+	}
+	defer tempFile.Close()
+
+	if _, err := io.Copy(tempFile, file); err != nil {
+		http.Error(w, "Failed to save file", http.StatusInternalServerError)
+		return
+	}
+
+	// Retrieve other form fields
+	concurrent := r.FormValue("concurrent")
+	runtime := r.FormValue("runtime")
+	startPort := r.FormValue("startPort")
+	headless := r.FormValue("headless") == "on" // Check if the checkbox is checked
+
+	// Construct the command
+	command := fmt.Sprintf("./3270Connect -config %s -concurrent %s -runtime %s -startPort %s",
+		tempFilePath, concurrent, runtime, startPort)
+	if headless {
+		command += " -headless"
+	}
+
+	go func() {
+		pterm.Info.Printf("Executing command: %s\n", command)
+
+		// Adjust command for Windows
+		commandParts := strings.Fields(command)
+		executable := commandParts[0]
+		args := commandParts[1:]
+
+		cmd := exec.Command(executable, args...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			pterm.Error.Printf("Failed to execute command: %v\n", err)
+		}
+	}()
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Process started successfully"))
 }
