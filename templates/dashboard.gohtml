@@ -372,27 +372,37 @@
     pidInfoContainer.innerHTML = "";
     metricsData.forEach(function(metric) {
       var avgCompletionTime = metric.durations.reduce((a, b) => a + b, 0) / metric.durations.length;
+
+      // Create a container div for both pidInfoDiv and pidLogsDiv
+      var pidContainerDiv = document.createElement("div");
+      pidContainerDiv.classList.add("mb-1", "p-1", "border-bottom", "d-flex", "justify-content-between", "align-items-center");
+      pidContainerDiv.style.fontSize = "0.8rem";
+      pidContainerDiv.style.fontFamily = "monospace";
+      pidContainerDiv.style.whiteSpace = "nowrap";
+      pidContainerDiv.style.overflowX = "auto";
+
+      // Create the PID info div
       var pidInfoDiv = document.createElement("div");
-      pidInfoDiv.classList.add("mb-1", "p-1", "border-bottom", "d-flex", "justify-content-between");
-      pidInfoDiv.style.fontSize = "0.8rem";
-      pidInfoDiv.style.fontFamily = "monospace";
-      pidInfoDiv.style.whiteSpace = "nowrap";
-      pidInfoDiv.style.overflowX = "auto";
-      var statusBadge = "";
-      if (extendedMetrics[metric.pid]) {
-        var statusObj = extendedMetrics[metric.pid];
-        var timeLeftDisplay = parseInt(statusObj.timeLeft) === 0 ? "" : ": " + statusObj.timeLeft + "s";
-        statusBadge = `<span class="badge ${statusObj.status === 'Running' ? 'bg-success' : 'bg-info'}" style="margin-right: 5px;">${statusObj.status}${timeLeftDisplay}</span>`;
-      }
-      pidInfoDiv.innerHTML = statusBadge + `<span style='color: green; width: 10%;'>PID: ${metric.pid}</span>` +
-                 `<span style='color: grey; width: 10%;'>Active: ${metric.activeWorkflows}</span>` +
-                 `<span style='color: grey; width: 10%;'>Started: ${metric.totalWorkflowsStarted}</span>` +
-                 `<span style='color: grey; width: 10%;'>Completed: ${metric.totalWorkflowsCompleted}</span>` +
-                 `<span style='color: grey; width: 10%;'>Failed: ${metric.totalWorkflowsFailed}</span>` +
-                 `<span style='color: grey; width: 10%;'>Avg Time: ${isNaN(avgCompletionTime) ? 'N/A' : avgCompletionTime.toFixed(2) + 's'}</span>` +
-                 `<span style='color: grey; width: 30%;'>Params: ${metric.params || 'N/A'}</span>` +
-                 `<i class='fa-solid fa-file-alt' style='cursor:pointer; margin-left:auto;' onclick='openLogsModal(${metric.pid})'></i>`;
-      pidInfoContainer.appendChild(pidInfoDiv);
+      pidInfoDiv.innerHTML = `
+        <span style='color: green; width: 10%;'>PID: ${metric.pid}</span>
+        <span style='color: grey; width: 10%;'>Active: ${metric.activeWorkflows}</span>
+        <span style='color: grey; width: 10%;'>Started: ${metric.totalWorkflowsStarted}</span>
+        <span style='color: grey; width: 10%;'>Completed: ${metric.totalWorkflowsCompleted}</span>
+        <span style='color: grey; width: 10%;'>Failed: ${metric.totalWorkflowsFailed}</span>
+        <span style='color: grey; width: 10%;'>Avg Time: ${isNaN(avgCompletionTime) ? 'N/A' : avgCompletionTime.toFixed(2) + 's'}</span>
+        <span style='color: grey; width: 30%;'>Params: ${metric.params || 'N/A'}</span>
+      `;
+
+      // Create the PID logs div
+      var pidLogsDiv = document.createElement("div");
+      pidLogsDiv.innerHTML = `<i class='fa-solid fa-file-alt' style='cursor:pointer;' onclick='openLogsModal(${metric.pid})'></i>`;
+
+      // Append both divs to the container
+      pidContainerDiv.appendChild(pidInfoDiv);
+      pidContainerDiv.appendChild(pidLogsDiv);
+
+      // Append the container to the PID info container on the dashboard
+      pidInfoContainer.appendChild(pidContainerDiv);
     });
   });
 
