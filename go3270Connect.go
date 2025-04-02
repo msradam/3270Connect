@@ -621,14 +621,22 @@ func printBanner() {
 
 func main() {
 	flag.Parse()
-	// If running in dashboard-only mode, just serve the dashboard and exit workflow processing.
-	if *startDashboard {
-		go runDashboard()
-		time.Sleep(2 * time.Second) // allow time for the dashboard to start
-		openDashboardEmbedded()
-		select {} // block indefinitely
-	}
 	printBanner()
+	// If no command-line parameters are provided, force dashboard mode.
+	if len(os.Args[1:]) == 0 {
+		*startDashboard = true        // set dashboard mode by default
+		flag.Set("dashboard", "true") // explicitly set the -dashboard flag
+	}
+	// If not attached to a terminal (e.g. double-clicked), force dashboard-only mode.
+	if !isTerminal() || *startDashboard {
+		*startDashboard = true
+		flag.Set("dashboard", "true")
+		storeLog("Starting dashboard mode - no terminal detected")
+		pterm.Info.Println("Starting dashboard mode - no terminal detected")
+		runDashboard()          // run dashboard in current goroutine
+		openDashboardEmbedded() // open dashboard URL in browser
+		return                  // exit so no workflows start
+	}
 	mutex.Lock()
 	lastUsedPort = startPort
 	mutex.Unlock()
@@ -1070,6 +1078,7 @@ func runDashboard() {
 
 	// Register the start-process endpoint
 	http.HandleFunc("/start-process", startProcessHandler)
+	http.HandleFunc("/kill", killProcessHandler) // register kill endpoint
 
 	addr := fmt.Sprintf(":%d", dashboardPort)
 	listener, err := net.Listen("tcp", addr)
@@ -1640,4 +1649,41 @@ func startProcessHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Process started successfully"))
+}
+
+func isTerminal() bool {
+	fi, err := os.Stdout.Stat()
+	if err != nil {
+		return false
+	}
+	// Check if Stdout is a character device
+	return (fi.Mode() & os.ModeCharDevice) != 0
+}
+
+func killProcessHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	pidStr := r.URL.Query().Get("pid")
+	if pidStr == "" {
+		http.Error(w, "Missing PID", http.StatusBadRequest)
+		return
+	}
+	pid, err := strconv.Atoi(pidStr)
+	if err != nil {
+		http.Error(w, "Invalid PID", http.StatusBadRequest)
+		return
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		http.Error(w, "Process not found", http.StatusNotFound)
+		return
+	}
+	if err := proc.Kill(); err != nil {
+		http.Error(w, "Failed to kill process", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Process killed successfully"))
 }
