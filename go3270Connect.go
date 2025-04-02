@@ -90,6 +90,7 @@ var cpuHistory []float64
 var memHistory []float64
 
 var showVersion = flag.Bool("version", false, "Show the application version")
+var startDashboard = flag.Bool("dashboard", false, "Start the dashboard and open the webpage")
 
 var enableProgressBar bool
 
@@ -620,6 +621,13 @@ func printBanner() {
 
 func main() {
 	flag.Parse()
+	// If running in dashboard-only mode, just serve the dashboard and exit workflow processing.
+	if *startDashboard {
+		go runDashboard()
+		time.Sleep(2 * time.Second) // allow time for the dashboard to start
+		openDashboardEmbedded()
+		select {} // block indefinitely
+	}
 	printBanner()
 	mutex.Lock()
 	lastUsedPort = startPort
@@ -1550,13 +1558,37 @@ func startProcessHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse the multipart form to handle file uploads
+	// Check for sample app parameters
+	runApp := r.FormValue("runApp")
+	if runApp != "" {
+		runAppPort := r.FormValue("runAppPort")
+		// Construct command for sample app mode
+		command := fmt.Sprintf("./3270Connect -runApp %s -runApp-port %s", runApp, runAppPort)
+		go func() {
+			pterm.Info.Printf("Executing sample app command: %s\n", command)
+			// Adjust for OS differences if needed
+			commandParts := strings.Fields(command)
+			executable := commandParts[0]
+			args := commandParts[1:]
+
+			cmd := exec.Command(executable, args...)
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err := cmd.Run(); err != nil {
+				pterm.Error.Printf("Failed to execute sample app command: %v\n", err)
+			}
+		}()
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Sample app started successfully"))
+		return
+	}
+
+	// Normal workflow: retrieve the uploaded file
 	if err := r.ParseMultipartForm(10 << 20); err != nil { // 10 MB max file size
 		http.Error(w, "Failed to parse form data", http.StatusBadRequest)
 		return
 	}
 
-	// Retrieve the uploaded file
 	file, handler, err := r.FormFile("configFile")
 	if err != nil {
 		http.Error(w, "Failed to retrieve file", http.StatusBadRequest)
@@ -1564,7 +1596,6 @@ func startProcessHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	// Save the uploaded file to a known location
 	tempFilePath := filepath.Join(os.TempDir(), handler.Filename)
 	tempFile, err := os.Create(tempFilePath)
 	if err != nil {
@@ -1582,9 +1613,9 @@ func startProcessHandler(w http.ResponseWriter, r *http.Request) {
 	concurrent := r.FormValue("concurrent")
 	runtime := r.FormValue("runtime")
 	startPort := r.FormValue("startPort")
-	headless := r.FormValue("headless") == "on" // Check if the checkbox is checked
+	headless := r.FormValue("headless") == "on" // use "on" for checked
 
-	// Construct the command
+	// Construct the command for normal workflow
 	command := fmt.Sprintf("./3270Connect -config %s -concurrent %s -runtime %s -startPort %s",
 		tempFilePath, concurrent, runtime, startPort)
 	if headless {

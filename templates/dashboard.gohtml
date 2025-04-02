@@ -17,6 +17,11 @@
   <style>
     body { padding-top: 70px; padding-bottom: 70px; color: black; }
     .chart-container { margin: auto; height: 400px; width: 600px; }
+    
+    #toast-container.toast-top-right {
+      top: 60px !important;  /* Push notifications down by 60px */
+      right: 20px; /* Keep it aligned to the right */
+    }
   </style>
 </head>
 <body>
@@ -64,11 +69,11 @@
           </div>
         </div>
         <form id="autoRefreshForm" method="get" class="mt-3">
-          <div class="form-check form-switch" data-tippy-content="Enable or disable automatic page refresh.">
+          <div class="form-check form-switch">
             <input class="form-check-input" type="checkbox" id="autoRefreshToggle" name="autoRefresh" value="true" {{.Checked}} onchange="this.form.submit()">
             <label class="form-check-label" for="autoRefreshToggle">Auto Refresh</label>
           </div>
-          <div class="mt-2" data-tippy-content="Set the interval for automatic page refresh in seconds.">
+          <div class="mt-2">
             <label for="refreshPeriodSelect" class="form-label">Refresh Period (seconds):</label>
             <select class="form-select w-auto" id="refreshPeriodSelect" name="refreshPeriod" onchange="this.form.submit()">
               <option value="1" {{.Sel1}}>1</option>
@@ -102,6 +107,10 @@
       <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#startProcessModal" data-tippy-content="Click to start a new 3270Connect process.">
         Start 3270Connect Process
       </button>
+      <!-- New button for starting a sample 3270 App -->
+      <button class="btn btn-success ms-2" data-bs-toggle="modal" data-bs-target="#startAppModal" data-tippy-content="Click to start a sample 3270 app.">
+        Start 3270 App
+      </button>
     </div>
   </div>
   <!-- Tooltip for notifications -->
@@ -110,7 +119,7 @@
     <div class="tooltip-inner"></div>
   </div>
   <!-- Modal for Console Logs -->
-  <div class="modal fade" id="consoleModal" tabindex="-1" aria-labelledby="consoleModalLabel" inert style="display: none;">
+  <div class="modal fade" id="consoleModal" tabindex="-1" aria-labelledby="consoleModalLabel" style="display: none;">
     <div class="modal-dialog modal-lg">
       <div class="modal-content">
         <div class="modal-header">
@@ -179,10 +188,45 @@
               <label class="form-check-label" for="headlessInput">Headless Mode</label>
             </div>
           </form>
+          <!-- New error container -->
+          <div id="processErrors"></div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-          <button type="button" class="btn btn-primary" onclick="start3270ConnectProcess()">Start Process</button>
+          <button type="button" class="btn btn-primary" data-tippy-content="Click to start the 3270Connect process" onclick="start3270ConnectProcess()">Start Process</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- New Modal for Starting 3270 App -->
+  <div class="modal fade" id="startAppModal" tabindex="-1" aria-labelledby="startAppModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="startAppModalLabel">Start 3270 App</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="startAppForm" novalidate>
+            <div class="mb-3">
+              <label for="runAppSelect" class="form-label">Select Sample App</label>
+              <select class="form-select" id="runAppSelect" name="runApp" required>
+                <option value="">Choose...</option>
+                <option value="1">Sample App 1</option>
+                <option value="2">Sample App 2</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label for="runAppPortInput" class="form-label">App Port</label>
+              <input type="number" class="form-control" id="runAppPortInput" name="runAppPort" placeholder="Enter port" value="3270" required>
+            </div>
+          </form>
+          <!-- New error container for start app modal -->
+          <div id="appProcessErrors"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          <button type="button" class="btn btn-success" data-tippy-content="Click to start the sample 3270 app" onclick="start3270App()">Start App</button>
         </div>
       </div>
     </div>
@@ -464,9 +508,31 @@
   }
 
   function start3270ConnectProcess() {
-    const form = document.getElementById('startProcessForm');
-    const formData = new FormData(form);
-
+    var errorsDiv = document.getElementById('processErrors');
+    errorsDiv.innerHTML = '';
+    var formElem = document.getElementById('startProcessForm');
+    
+    // Check if form is valid using form.checkValidity()
+    if (!formElem.checkValidity()) {
+      errorsDiv.innerHTML = '<div class="alert alert-danger">Please complete all required fields.</div>';
+      return;
+    }
+    
+    var configFileInput = document.getElementById('configFileInput');
+    // Additionally trap error if configuration file is not supplied
+    if (!configFileInput.files || configFileInput.files.length === 0) {
+      errorsDiv.innerHTML = '<div class="alert alert-danger">Configuration file is required.</div>';
+      return;
+    }
+    
+    // All required fields provided; build FormData manually
+    var formData = new FormData();
+    formData.append("configFile", configFileInput.files[0]);
+    formData.append("concurrent", document.getElementById('concurrentInput').value);
+    formData.append("runtime", document.getElementById('runtimeInput').value);
+    formData.append("startPort", document.getElementById('startPortInput').value);
+    formData.append("headless", document.getElementById('headlessInput').checked ? "on" : "off");
+  
     fetch('/start-process', {
       method: 'POST',
       body: formData
@@ -474,7 +540,6 @@
     .then(response => {
       if (response.ok) {
         toastr.success('Process started successfully!');
-        // Close the modal after successful submission
         var modalEl = document.getElementById("startProcessModal");
         var modalInstance = bootstrap.Modal.getInstance(modalEl);
         if (modalInstance) {
@@ -491,6 +556,46 @@
       toastr.error(`An error occurred while starting the process: ${String(error.message)}`);
     });
   }
+
+  // New function to handle starting the sample 3270 App
+  function start3270App() {
+    var errorsDiv = document.getElementById('appProcessErrors');
+    errorsDiv.innerHTML = '';
+    var formElem = document.getElementById('startAppForm');
+    if (!formElem.checkValidity()) {
+      errorsDiv.innerHTML = '<div class="alert alert-danger">Please complete all required fields.</div>';
+      return;
+    }
+    var runApp = document.getElementById('runAppSelect').value;
+    var runAppPort = document.getElementById('runAppPortInput').value;
+    // Build FormData with runApp params
+    var formData = new FormData();
+    formData.append("runApp", runApp);
+    formData.append("runAppPort", runAppPort);
+  
+    fetch('/start-process', {
+      method: 'POST',
+      body: formData
+    })
+    .then(response => {
+      if (response.ok) {
+        toastr.success('Sample app started successfully!');
+        var modalEl = document.getElementById("startAppModal");
+        var modalInstance = bootstrap.Modal.getInstance(modalEl);
+        if (modalInstance) {
+          modalInstance.hide();
+        }
+      } else {
+        return response.text().then((text) => {
+          toastr.error(`Failed to start sample app: ${String(text)}`);
+        });
+      }
+    })
+    .catch(error => {
+      console.error('Error starting sample app:', error);
+      toastr.error(`An error occurred while starting the sample app: ${String(error.message)}`);
+    });
+  }
 </script>
 <script>
   // Create a mapping for extended metrics keyed by PID
@@ -505,11 +610,43 @@
 </script>
 <script>
   document.addEventListener('DOMContentLoaded', function () {
-    // Ensure Tippy.js is initialized
+    // Initialize default tooltips with an offset
     tippy('[data-tippy-content]', {
       placement: 'top',
       animation: 'fade',
       theme: 'light',
+      popperOptions: {
+        modifiers: [ {
+          name: 'offset',
+          options: { offset: [0, 8] }
+        } ]
+      }
+    });
+    // Specific settings for auto refresh toggle tooltip
+    tippy('#autoRefreshToggle', {
+      content: document.querySelector('#autoRefreshToggle').getAttribute('data-tippy-content') || "Enable or disable automatic page refresh.",
+      placement: 'right',
+      animation: 'fade',
+      theme: 'light',
+      popperOptions: {
+        modifiers: [ {
+          name: 'offset',
+          options: { offset: [20, 0] }
+        } ]
+      }
+    });
+    // Specific settings for refresh period select tooltip
+    tippy('#refreshPeriodSelect', {
+      content: document.querySelector('#refreshPeriodSelect').getAttribute('data-tippy-content') || "Set the interval for automatic page refresh in seconds.",
+      placement: 'right',
+      animation: 'fade',
+      theme: 'light',
+      popperOptions: {
+        modifiers: [ {
+          name: 'offset',
+          options: { offset: [20, 0] }
+        } ]
+      }
     });
   });
 </script>
