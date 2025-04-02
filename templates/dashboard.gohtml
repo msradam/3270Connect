@@ -99,7 +99,7 @@
       </div>
     </div>
     <div class="row mt-3">
-      <div class="col-md-12" id="pidParamsContainerOnDashboard" data-tippy-content="Details of workflows grouped by Process ID (PID).">
+      <div class="col-md-12" id="pidParamsContainerOnDashboard">
         <!-- Bars for process metrics will be rendered here -->
       </div>
     </div>
@@ -486,48 +486,46 @@
     autoRefreshLogsCheckbox.addEventListener("change", function(){ if(this.checked) { startLogsAutoRefresh(parseInt(refreshIntervalSelect.value)); } else { stopLogsAutoRefresh(); } });
     refreshIntervalSelect.addEventListener("change", function(){ if(autoRefreshLogsCheckbox.checked) { stopLogsAutoRefresh(); startLogsAutoRefresh(parseInt(this.value)); } });
     // Add PID info below the graphs
+    // Replace the PID info section with a table
     var pidInfoContainer = document.getElementById("pidParamsContainerOnDashboard");
     pidInfoContainer.innerHTML = "";
+    var table = document.createElement("table");
+    table.classList.add("table", "table-striped", "table-bordered", "table-sm");
+    var thead = document.createElement("thead");
+    thead.innerHTML = `
+      <tr>
+        <th>Menu</th>
+        <th>PID</th>
+        <th>Active</th>
+        <th>Started</th>
+        <th>Completed</th>
+        <th>Failed</th>
+        <th>Avg Time</th>
+        <th>Params</th>
+      </tr>
+    `;
+    table.appendChild(thead);
+    var tbody = document.createElement("tbody");
     metricsData.forEach(function(metric) {
       var avgCompletionTime = metric.durations.reduce((a, b) => a + b, 0) / metric.durations.length;
-
-      // Create a container div for both pidInfoDiv and pidLogsDiv
-      var pidContainerDiv = document.createElement("div");
-      pidContainerDiv.classList.add("mb-1", "p-1", "border-bottom", "d-flex", "align-items-center");
-      pidContainerDiv.style.fontSize = "0.8rem";
-      pidContainerDiv.style.fontFamily = "monospace";
-      pidContainerDiv.style.whiteSpace = "nowrap";
-      pidContainerDiv.style.overflowX = "auto";
-
-      // Create the PID info div
-      var pidInfoDiv = document.createElement("div");
-      pidInfoDiv.innerHTML = `
-        <span style='color: green; width: 10%;'>PID: ${metric.pid}</span>
-        ${metric.params ? `
-        <span style='color: grey; width: 10%;'>Active: ${metric.activeWorkflows}</span>
-        <span style='color: grey; width: 10%;'>Started: ${metric.totalWorkflowsStarted}</span>
-        <span style='color: grey; width: 10%;'>Completed: ${metric.totalWorkflowsCompleted}</span>
-        <span style='color: grey; width: 10%;'>Failed: ${metric.totalWorkflowsFailed}</span>
-        <span style='color: grey; width: 10%;'>Avg Time: ${isNaN(avgCompletionTime) ? 'N/A' : avgCompletionTime.toFixed(2) + 's'}</span>
-        ` : ''}
-        <span style='color: grey; width: 30%;'>Params: ${metric.params || '-dashboard'}</span>
+      var row = document.createElement("tr");
+      row.innerHTML = `
+        <td style="text-align: center;">
+          <i class="fa-solid fa-file-alt" style="cursor:pointer;" onclick="openLogsModal(${metric.pid})" data-tippy-content="Show Logs: ${metric.pid}"></i>
+          <i class="fa-solid fa-skull" style="cursor:pointer; color: red; margin-left: 5px;" onclick="confirmKill(${metric.pid}, '${metric.params || '-dashboard'}')" data-tippy-content="Kill PID: ${metric.pid}"></i>
+        </td>
+        <td style="color: green;">${metric.pid}</td>
+        <td>${metric.activeWorkflows || '-'}</td>
+        <td>${metric.totalWorkflowsStarted || '-'}</td>
+        <td>${metric.totalWorkflowsCompleted || '-'}</td>
+        <td>${metric.totalWorkflowsFailed || '-'}</td>
+        <td>${isNaN(avgCompletionTime) ? 'N/A' : avgCompletionTime.toFixed(2) + 's'}</td>
+        <td>${metric.params || '-dashboard'}</td>
       `;
-
-      // Create a left-side menu area
-      var pidMenuDiv = document.createElement("div");
-      pidMenuDiv.style.width = "40px";
-      pidMenuDiv.style.textAlign = "center";
-      pidMenuDiv.style.marginRight = "10px";
-      pidMenuDiv.innerHTML = `
-        <i class='fa-solid fa-file-alt' style='cursor:pointer;' onclick='openLogsModal(${metric.pid})' data-tippy-content="Show Logs: ${metric.pid}"></i>
-        <i class='fa-solid fa-skull' style='cursor:pointer; color: red;' onclick='confirmKill(${metric.pid}, "${metric.params || '-dashboard'}")' data-tippy-content="Kill PID: ${metric.pid}"></i>
-      `;
-      pidContainerDiv.appendChild(pidMenuDiv);
-      pidContainerDiv.appendChild(pidInfoDiv);
-
-      // Append the container to the PID info container on the dashboard
-      pidInfoContainer.appendChild(pidContainerDiv);
+      tbody.appendChild(row);
     });
+    table.appendChild(tbody);
+    pidInfoContainer.appendChild(table);
   });
 
   function openLogsModal(pid) {
