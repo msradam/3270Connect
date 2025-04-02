@@ -21,11 +21,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/pkg/browser"
-
 	connect3270 "github.com/3270io/3270Connect/connect3270"
 	"github.com/3270io/3270Connect/sampleapps/app1"
 	app2 "github.com/3270io/3270Connect/sampleapps/app2"
+
+	"github.com/jchv/go-webview2"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pterm/pterm"
@@ -506,7 +506,7 @@ func runAPIWorkflow() {
 			"output":     outputContents,
 		})
 	})
-	apiAddr := fmt.Sprintf(":%d", apiPort)
+	apiAddr := fmt.Sprintf("localhost:%d", apiPort) // Bind to localhost
 	pterm.Success.Printf("API server rocking on %s - let’s roll!\n", apiAddr)
 	if err := r.Run(apiAddr); err != nil {
 		pterm.Error.Printf("API server crashed - send coffee: %v\n", err)
@@ -619,24 +619,33 @@ func printBanner() {
 	pterm.Println()
 }
 
+func LaunchEmbeddedIfDoubleClicked() {
+	if !isTerminal() {
+		*startDashboard = true
+		flag.Set("dashboard", "true")
+		pterm.Info.Println("Launching dashboard in GUI mode (double-click detected)")
+
+		// Start dashboard in background
+		go runDashboard()
+
+		// Give it time to start
+		time.Sleep(1 * time.Second)
+
+		// Launch the embedded browser
+		openDashboardEmbedded()
+		storeLog("Starting dashboard mode - no terminal detected")
+		return
+	}
+}
+
 func main() {
 	flag.Parse()
 	printBanner()
 	// If no command-line parameters are provided, force dashboard mode.
-	if len(os.Args[1:]) == 0 {
-		*startDashboard = true        // set dashboard mode by default
-		flag.Set("dashboard", "true") // explicitly set the -dashboard flag
-	}
-	// If not attached to a terminal (e.g. double-clicked), force dashboard-only mode.
-	if !isTerminal() || *startDashboard {
-		*startDashboard = true
-		flag.Set("dashboard", "true")
-		pterm.Info.Println("Starting dashboard mode - no terminal detected")
-		runDashboard()          // run dashboard in current goroutine
-		openDashboardEmbedded() // open dashboard URL in browser
-		storeLog("Starting dashboard mode - no terminal detected")
-		return // exit so no workflows start
-	}
+
+	// If the dashboard is not started, the program will exit.
+	LaunchEmbeddedIfDoubleClicked()
+
 	mutex.Lock()
 	lastUsedPort = startPort
 	mutex.Unlock()
@@ -668,6 +677,13 @@ func main() {
 			pterm.Error.Printf("Invalid runApp value: %s - Did you mean 1 or 2?\n", runApp)
 		}
 	}
+
+	// Prevent workflows from starting in dashboard-only mode
+	if *startDashboard {
+		pterm.Info.Println("Dashboard-only mode enabled. Skipping workflow execution.")
+		select {} // Keep the program running for the dashboard
+	}
+
 	config := loadConfiguration(configFile)
 	if runAPI {
 		runAPIWorkflow()
@@ -691,10 +707,36 @@ func setGlobalSettings() {
 }
 
 func openDashboardEmbedded() {
-	url := "http://localhost:9200/dashboard"
-	if err := browser.OpenURL(url); err != nil {
-		pterm.Error.Printf("Failed to open dashboard URL: %v\n", err)
+	if !*startDashboard {
+		pterm.Warning.Println("Dashboard mode not enabled. Skipping embedded browser launch.")
+		return
 	}
+
+	debug := false
+	w := webview2.New(debug)
+	defer func() {
+		if r := recover(); r != nil {
+			pterm.Error.Println("Recovered from a panic in openDashboardEmbedded:", r)
+		}
+		w.Destroy()
+	}()
+
+	w.SetTitle("3270Connect Dashboard")
+	w.SetSize(1024, 768, webview2.HintNone)
+
+	// Set the icon for the WebView panel
+	iconPath := "logo.png" // Ensure this file exists in the working directory
+	if _, err := os.Stat(iconPath); err == nil {
+		// The SetIconFromFile method is not available in webview2.WebView.
+		// If setting an icon is necessary, consider alternative approaches or remove this line.
+		// For now, we will comment it out to avoid the compile error.
+		// w.SetIconFromFile(iconPath)
+	} else {
+		pterm.Warning.Printf("Icon file %s not found. Skipping icon setup.\n", iconPath)
+	}
+
+	w.Navigate("http://localhost:9200/dashboard")
+	w.Run()
 }
 
 var stopTicker chan struct{}
@@ -1081,7 +1123,7 @@ func runDashboard() {
 	http.HandleFunc("/start-process", startProcessHandler)
 	http.HandleFunc("/kill", killProcessHandler) // register kill endpoint
 
-	addr := fmt.Sprintf(":%d", dashboardPort)
+	addr := fmt.Sprintf("localhost:%d", dashboardPort) // Bind to localhost
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		pterm.Warning.Printf("Dashboard already vibing on port %d - skipping the encore!\n", dashboardPort)
