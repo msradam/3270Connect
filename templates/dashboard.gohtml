@@ -17,7 +17,7 @@
   <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
     <div class="container">
       <a class="navbar-brand" href="#">
-        <img src="/templates/logo.png" alt="3270Connect Logo" width="30" height="30" class="d-inline-block align-top">
+        <img src="/static/images/logo.png" alt="3270Connect Logo" width="30" class="d-inline-block align-top">
         3270Connect
       </a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -25,7 +25,6 @@
       </button>
       <div class="collapse navbar-collapse" id="navbarNav">
         <ul class="navbar-nav ms-auto">
-          <li class="nav-item"><a class="nav-link" href="/dashboard">Dashboard</a></li>
           <li class="nav-item">
             <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#consoleModal">
               Console Logs
@@ -141,7 +140,7 @@
   </div>
   <footer class="bg-dark text-white fixed-bottom">
     <div class="container text-center py-2">
-      &copy; {{.Year}} 3270Connect. All rights reserved.
+      &copy; {{.Year}} 3270Connect. All rights reserved. v{{.Version }}
     </div>
   </footer>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>

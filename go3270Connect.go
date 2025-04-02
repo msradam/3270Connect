@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"io/fs"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -32,7 +33,7 @@ import (
 	"github.com/shirou/gopsutil/mem"
 )
 
-const version = "1.3.2"
+const version = "1.3.3"
 
 var errorList []error
 var errorMutex sync.Mutex
@@ -89,7 +90,7 @@ var memHistory []float64
 
 var showVersion = flag.Bool("version", false, "Show the application version")
 
-var disableProgressBar bool
+var enableProgressBar bool
 
 var runAppPort int
 
@@ -104,6 +105,7 @@ var inMemoryLogs []LogEntry
 var logMutex sync.Mutex
 
 //go:embed templates/dashboard.gohtml
+//go:embed templates/static/*
 var dashboardTemplateFS embed.FS
 
 var dashboardTemplate *template.Template
@@ -123,7 +125,7 @@ func init() {
 	flag.IntVar(&runAppPort, "runApp-port", 3270, "Port for the sample 3270 app")
 	flag.IntVar(&startPort, "startPort", 5000, "Starting port for workflow connections")
 	flag.IntVar(&dashboardPort, "dashboardPort", 9200, "Port for the dashboard server")
-	flag.BoolVar(&disableProgressBar, "disableProgressBar", false, "Disable progress bar and show INFO log messages instead")
+	flag.BoolVar(&enableProgressBar, "enableProgressBar", false, "Enable progress bar and hide INFO log messages")
 
 	// Set up pterm with a funky theme
 	pterm.DefaultSection.Style = pterm.NewStyle(pterm.FgCyan, pterm.Bold)
@@ -686,7 +688,7 @@ func runConcurrentWorkflows(config *Configuration) {
 
 	var multi pterm.MultiPrinter
 	var durationBar *pterm.ProgressbarPrinter
-	if disableProgressBar {
+	if !enableProgressBar {
 		pterm.Info.Println("Progress bar disabled. Showing INFO log messages instead.")
 	} else {
 		// Initialize MultiPrinter for all output
@@ -808,7 +810,7 @@ func runConcurrentWorkflows(config *Configuration) {
 			batchSize := min(freeSlots, config.RampUpBatchSize)
 			storeLog(fmt.Sprintf("Increasing batch by %d, current size is %d, new total target is %d",
 				batchSize, len(semaphore), len(semaphore)+batchSize))
-			if disableProgressBar {
+			if !enableProgressBar {
 				pterm.Info.Println(fmt.Sprintf("Increasing batch by %d, current size is %d, new total target is %d",
 					batchSize, len(semaphore), len(semaphore)+batchSize))
 			}
@@ -833,7 +835,7 @@ func runConcurrentWorkflows(config *Configuration) {
 			memStats, _ := mem.VirtualMemory()
 			storeLog(fmt.Sprintf("Currently active workflows: %d, CPU usage: %.2f%%, memory usage: %.2f%%",
 				len(semaphore), cpuPercent[0], memStats.UsedPercent))
-			if disableProgressBar {
+			if !enableProgressBar {
 				pterm.Info.Println(fmt.Sprintf("Currently active workflows: %d, CPU usage: %.2f%%, memory usage: %.2f%%",
 					len(semaphore), cpuPercent[0], memStats.UsedPercent))
 			}
@@ -843,14 +845,14 @@ func runConcurrentWorkflows(config *Configuration) {
 		memStats, _ := mem.VirtualMemory()
 		storeLog(fmt.Sprintf("Currently active workflows: %d, CPU usage: %.2f%%, memory usage: %.2f%%",
 			len(semaphore), cpuPercent[0], memStats.UsedPercent))
-		if disableProgressBar {
+		if enableProgressBar {
 			pterm.Info.Println(fmt.Sprintf("Currently active workflows: %d, CPU usage: %.2f%%, memory usage: %.2f%%",
 				len(semaphore), cpuPercent[0], memStats.UsedPercent))
 		}
 		time.Sleep(time.Duration(config.RampUpDelay * float64(time.Second)))
 	}
 
-	if !disableProgressBar {
+	if enableProgressBar {
 		multi.Stop()
 	}
 
@@ -859,7 +861,7 @@ func runConcurrentWorkflows(config *Configuration) {
 	wg.Wait()
 	storeLog("All workflows completed after runtimeDuration ended.")
 
-	if !disableProgressBar {
+	if enableProgressBar {
 		// Stop the progress bar updates
 		stopTicker <- struct{}{}
 
@@ -1048,6 +1050,15 @@ func validateConfiguration(config *Configuration) error {
 }
 
 func runDashboard() {
+
+	// Serve embedded static files
+	staticFiles, err := fs.Sub(dashboardTemplateFS, "templates/static")
+	if err != nil {
+		pterm.Error.Println("Failed to load embedded static files:", err)
+		return
+	}
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFiles))))
+
 	addr := fmt.Sprintf(":%d", dashboardPort)
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -1172,6 +1183,7 @@ func runDashboard() {
 			MetricsJSON                     string
 			ExtendedMetricsList             []ExtendedMetrics
 			ExtendedJSON                    string
+			Version                         string
 		}{
 			ActiveWorkflows:         agg.ActiveWorkflows,
 			TotalWorkflowsStarted:   agg.TotalWorkflowsStarted,
@@ -1189,6 +1201,7 @@ func runDashboard() {
 			MetricsJSON:             string(metricsJSON),
 			ExtendedMetricsList:     extended,
 			ExtendedJSON:            string(extendedJSON),
+			Version:                 version, // Holds the value of the const `version`
 		}
 		if err := dashboardTemplate.Execute(w, data); err != nil {
 			pterm.Error.Printf("Dashboard template execution failed - HTML’s throwing a tantrum: %v\n", err)
