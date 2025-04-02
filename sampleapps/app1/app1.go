@@ -1,10 +1,14 @@
 package app1
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/pterm/pterm"
 	"github.com/racingmars/go3270"
@@ -59,7 +63,54 @@ var screen2 = go3270.Screen{
 	{Row: 22, Col: 0, Content: "PF3 Exit"},
 }
 
+// Add Metrics type for dashboard compatibility
+type Metrics struct {
+	PID                     int       `json:"pid"`
+	ActiveWorkflows         int       `json:"activeWorkflows"`
+	TotalWorkflowsStarted   int       `json:"totalWorkflowsStarted"`
+	TotalWorkflowsCompleted int       `json:"totalWorkflowsCompleted"`
+	TotalWorkflowsFailed    int       `json:"totalWorkflowsFailed"`
+	Durations               []float64 `json:"durations"`
+	CPUUsage                []float64 `json:"cpuUsage"`
+	MemoryUsage             []float64 `json:"memoryUsage"`
+	Params                  string    `json:"params"`
+	RuntimeDuration         int       `json:"runtimeDuration"`
+	StartTimestamp          int64     `json:"startTimestamp"`
+}
+
+// startMetricsUpdater periodically writes a minimal metrics file.
+func startMetricsUpdater() {
+	pid := os.Getpid()
+	for {
+		metrics := Metrics{
+			PID:                     pid,
+			ActiveWorkflows:         0,
+			TotalWorkflowsStarted:   1,
+			TotalWorkflowsCompleted: 0,
+			TotalWorkflowsFailed:    0,
+			Durations:               []float64{},
+			CPUUsage:                []float64{},
+			MemoryUsage:             []float64{},
+			Params:                  "-runApp 1",
+			RuntimeDuration:         0,
+			StartTimestamp:          time.Now().Unix(),
+		}
+		dir, err := os.UserConfigDir()
+		if err != nil {
+			dir = filepath.Join(".", "dashboard")
+		} else {
+			dir = filepath.Join(dir, "3270Connect", "dashboard")
+		}
+		os.MkdirAll(dir, 0755)
+		data, _ := json.Marshal(metrics)
+		ioutil.WriteFile(filepath.Join(dir, fmt.Sprintf("metrics_%d.json", pid)), data, 0644)
+		time.Sleep(5 * time.Second)
+	}
+}
+
+// In RunApplication, start the metrics updater before accepting connections.
 func RunApplication(port int) {
+	go startMetricsUpdater()
 	address := fmt.Sprintf(":%d", port)
 	ln, err := net.Listen("tcp", address)
 	if err != nil {

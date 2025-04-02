@@ -656,6 +656,7 @@ func main() {
 	}
 	go monitorSystemUsage()
 	if runApp != "" {
+		storeLog(fmt.Sprintf("RunApp selected: Sample App %s launched on port %d - PID: %d", runApp, runAppPort, os.Getpid()))
 		switch runApp {
 		case "1":
 			app1.RunApplication(runAppPort)
