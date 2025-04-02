@@ -631,11 +631,11 @@ func main() {
 	if !isTerminal() || *startDashboard {
 		*startDashboard = true
 		flag.Set("dashboard", "true")
-		storeLog("Starting dashboard mode - no terminal detected")
 		pterm.Info.Println("Starting dashboard mode - no terminal detected")
 		runDashboard()          // run dashboard in current goroutine
 		openDashboardEmbedded() // open dashboard URL in browser
-		return                  // exit so no workflows start
+		storeLog("Starting dashboard mode - no terminal detected")
+		return // exit so no workflows start
 	}
 	mutex.Lock()
 	lastUsedPort = startPort
@@ -1562,7 +1562,9 @@ func addError(err error) {
 
 // Add a new endpoint to handle the process initiation request
 func startProcessHandler(w http.ResponseWriter, r *http.Request) {
+	storeLog("Received start process request")
 	if r.Method != http.MethodPost {
+		storeLog("Invalid request method for start process")
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
 		return
 	}
@@ -1570,11 +1572,13 @@ func startProcessHandler(w http.ResponseWriter, r *http.Request) {
 	// Check for sample app parameters
 	runApp := r.FormValue("runApp")
 	if runApp != "" {
+		storeLog("Sample app mode detected")
 		runAppPort := r.FormValue("runAppPort")
 		// Construct command for sample app mode
 		command := fmt.Sprintf("./3270Connect -runApp %s -runApp-port %s", runApp, runAppPort)
 		go func() {
 			pterm.Info.Printf("Executing sample app command: %s\n", command)
+			storeLog("Executing sample app command: " + command)
 			// Adjust for OS differences if needed
 			commandParts := strings.Fields(command)
 			executable := commandParts[0]
@@ -1587,11 +1591,13 @@ func startProcessHandler(w http.ResponseWriter, r *http.Request) {
 				pterm.Error.Printf("Failed to execute sample app command: %v\n", err)
 			}
 		}()
+		storeLog("Sample app started successfully")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Sample app started successfully"))
 		return
 	}
 
+	storeLog("Processing normal workflow")
 	// Normal workflow: retrieve the uploaded file
 	if err := r.ParseMultipartForm(10 << 20); err != nil { // 10 MB max file size
 		http.Error(w, "Failed to parse form data", http.StatusBadRequest)
@@ -1631,6 +1637,7 @@ func startProcessHandler(w http.ResponseWriter, r *http.Request) {
 		command += " -headless"
 	}
 
+	storeLog("Command to execute: " + command)
 	go func() {
 		pterm.Info.Printf("Executing command: %s\n", command)
 
@@ -1646,7 +1653,7 @@ func startProcessHandler(w http.ResponseWriter, r *http.Request) {
 			pterm.Error.Printf("Failed to execute command: %v\n", err)
 		}
 	}()
-
+	storeLog("Process started successfully")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Process started successfully"))
 }
@@ -1661,6 +1668,7 @@ func isTerminal() bool {
 }
 
 func killProcessHandler(w http.ResponseWriter, r *http.Request) {
+	storeLog("Received kill request")
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
@@ -1670,20 +1678,25 @@ func killProcessHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Missing PID", http.StatusBadRequest)
 		return
 	}
+	storeLog("Killing process with PID: " + pidStr)
 	pid, err := strconv.Atoi(pidStr)
 	if err != nil {
+		storeLog("Invalid PID: " + pidStr)
 		http.Error(w, "Invalid PID", http.StatusBadRequest)
 		return
 	}
 	proc, err := os.FindProcess(pid)
 	if err != nil {
+		storeLog("Process not found: " + pidStr)
 		http.Error(w, "Process not found", http.StatusNotFound)
 		return
 	}
 	if err := proc.Kill(); err != nil {
+		storeLog("Failed to kill process: " + pidStr)
 		http.Error(w, "Failed to kill process", http.StatusInternalServerError)
 		return
 	}
+	storeLog("Process killed successfully PID: " + pidStr)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Process killed successfully"))
 }
