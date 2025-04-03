@@ -273,7 +273,7 @@
   }
   startAutoRefresh();
   document.addEventListener('DOMContentLoaded', function() {
-    var metricsData = JSON.parse('{{.MetricsJSON}}');
+    var metricsData = JSON.parse('{{.ExtendedJSON}}');
     var maxCount = 0;
     metricsData.forEach(function(metric) { if (metric.durations && metric.durations.length > maxCount) { maxCount = metric.durations.length; } });
     var labels = [];
@@ -497,6 +497,8 @@
       <tr>
         <th>Menu</th>
         <th>PID</th>
+        <th>Status</th>
+        <th>Remaining</th>
         <th>Active</th>
         <th>Started</th>
         <th>Completed</th>
@@ -516,6 +518,8 @@
           <i class="fa-solid fa-skull" style="cursor:pointer; color: red; margin-left: 5px;" onclick="confirmKill(${metric.pid}, '${metric.params || '-dashboard'}')" data-tippy-content="Kill PID: ${metric.pid}"></i>
         </td>
         <td style="color: green;">${metric.pid}</td>
+        <td>${metric.status || '-'}</td>
+        <td>${(typeof metric.timeLeft !== 'undefined' && metric.timeLeft !== null) ? metric.timeLeft + 's' : '-'}</td>
         <td>${metric.activeWorkflows || '-'}</td>
         <td>${metric.totalWorkflowsStarted || '-'}</td>
         <td>${metric.totalWorkflowsCompleted || '-'}</td>

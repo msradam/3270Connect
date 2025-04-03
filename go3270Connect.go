@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	connect3270 "github.com/3270io/3270Connect/connect3270"
@@ -1376,9 +1377,13 @@ func updateMetricsFile() {
 		RuntimeDuration:         runtimeDuration,
 		StartTimestamp:          programStart.Unix(),
 	}
-	data, err := json.Marshal(metrics)
+
+	// Process extended metrics by using the extend() method on metrics.
+	extendedMetrics := metrics.extend()
+
+	data, err := json.Marshal(extendedMetrics)
 	if err != nil {
-		pterm.Warning.Printf("Metrics marshaling failed for pid %d - JSON’s sulking: %v\n", pid, err)
+		pterm.Warning.Printf("Extended metrics marshaling failed for pid %d - JSON’s sulking: %v\n", pid, err)
 		return
 	}
 	dashboardDir, err := os.UserConfigDir()
@@ -1439,14 +1444,22 @@ func (m Metrics) extend() ExtendedMetrics {
 	if timeLeft < 0 {
 		timeLeft = 0
 	}
-	status := "Unknown" // Default status for missing or incomplete metrics
-	if m.ActiveWorkflows > 0 {
+	status := "Running" // Default status for missing or incomplete metrics
+	if m.ActiveWorkflows > 0 && timeLeft > 0 {
 		status = "Running"
-	} else if timeLeft == 0 && m.TotalWorkflowsStarted > 0 && m.TotalWorkflowsCompleted == 0 {
-		status = "Killed"
-	} else if timeLeft == 0 {
+	}
+	// Check if the process with PID exists; if not, mark as "Killed"
+	if timeLeft == 0 && (m.Params != "" && !strings.Contains(m.Params, "-runApp")) {
 		status = "Ended"
 	}
+	proc, _ := os.FindProcess(m.PID)
+	// Sending signal 0 does not kill the process but can be used to check for its existence.
+	if runtime.GOOS != "windows" {
+		if err := proc.Signal(syscall.Signal(0)); err != nil {
+			status = "Killed"
+		}
+	}
+
 	return ExtendedMetrics{
 		Metrics:  m,
 		Status:   status,
