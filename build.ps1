@@ -1,6 +1,10 @@
 # build.ps1
 # Builds terminal and GUI versions of 3270Connect for Windows and Linux
 
+Write-Output 'Embedding icon into the binary...'
+# Ensure rsrc is installed: go install github.com/akavel/rsrc@latest
+rsrc -ico logo.ico -o resource.syso
+
 Write-Output 'Building Windows terminal version...'
 go build -o 3270Connect.exe go3270Connect.go
 

@@ -49,12 +49,21 @@ jobs:
         with:
           go-version: '1.23'
 
-      - name: Build for Windows
+      - name: Install rsrc for embedding icons
         shell: pwsh
-        run: |
-          $env:GOARCH="amd64"
-          $env:GOOS="windows"
-          go build -o 3270Connect.exe go3270Connect.go
+        run: go install github.com/akavel/rsrc@latest
+
+      - name: Embed icon into binary
+        shell: pwsh
+        run: rsrc -ico logo.ico -o resource.syso
+
+      - name: Build Windows terminal version
+        shell: pwsh
+        run: go build -o 3270Connect.exe go3270Connect.go
+
+      - name: Build Windows GUI version
+        shell: pwsh
+        run: go build -ldflags="-H=windowsgui" -o 3270Connect_GUI.exe go3270Connect.go
 
       - name: Test Go Project
         run: go test -v ./...
@@ -65,11 +74,13 @@ jobs:
           .\3270Connect.exe -runApp 1
           .\3270Connect.exe -verbose -headless
 
-      - name: Upload Windows Binary
+      - name: Upload Windows Binaries
         uses: actions/upload-artifact@v4
         with:
           name: 3270Connect-windows
-          path: 3270Connect.exe
+          path: |
+            3270Connect.exe
+            3270Connect_GUI.exe
 
   build-and-push-docker:
     runs-on: ubuntu-latest
@@ -108,6 +119,15 @@ jobs:
           platforms: windows/amd64
           file: ./Dockerfile.windows
           tags: ghcr.io/${{ github.repository_owner }}/3270connect:windows-latest
+
+      - name: Build and Push Windows GUI Docker Image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          platforms: windows/amd64
+          file: ./Dockerfile.windows.gui
+          tags: ghcr.io/${{ github.repository_owner }}/3270connect:windows-gui-latest
 
   build-and-deploy-mkdocs:
     runs-on: ubuntu-latest
