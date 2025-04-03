@@ -17,7 +17,7 @@ Remove-Item Env:GOOS
 Remove-Item Env:GOARCH
 
 Write-Output ''
-Write-Output '✅ Build complete!'
+Write-Output ' Build complete!'
 Write-Output '  - 3270Connect.exe : Windows terminal version'
 Write-Output '  - 3270Connect_GUI.exe      : Windows GUI version'
 Write-Output '  - 3270Connect_linux        : Linux version'

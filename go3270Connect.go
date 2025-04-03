@@ -620,30 +620,43 @@ func printBanner() {
 }
 
 func LaunchEmbeddedIfDoubleClicked() {
-	if !isTerminal() {
-		*startDashboard = true
-		flag.Set("dashboard", "true")
-		pterm.Info.Println("Launching dashboard in GUI mode (double-click detected)")
-
-		// Start dashboard in background
-		go runDashboard()
-
-		// Give it time to start
-		time.Sleep(1 * time.Second)
-
-		// Launch the embedded browser
-		openDashboardEmbedded()
-		storeLog("Starting dashboard mode - no terminal detected")
+	if !*startDashboard {
+		pterm.Warning.Println("Dashboard mode not enabled. Skipping embedded browser launch.")
 		return
 	}
+	//if !isTerminal() {
+	*startDashboard = true
+	flag.Set("dashboard", "true")
+	pterm.Info.Println("Launching dashboard in GUI mode (double-click detected)")
+
+	// Start dashboard in background
+	go runDashboard()
+
+	// Give it time to start
+	time.Sleep(1 * time.Second)
+
+	// Launch the embedded browser
+	openDashboardEmbedded()
+	storeLog("Starting dashboard mode - no terminal detected")
+	return
+	//}
 }
 
 func main() {
 	flag.Parse()
 	printBanner()
 	// If no command-line parameters are provided, force dashboard mode.
+	if len(os.Args) == 1 {
+		*startDashboard = true
+		flag.Set("dashboard", "true")
+		pterm.Info.Println("No command-line parameters detected. Forcing dashboard mode.")
+	}
 
 	// If the dashboard is not started, the program will exit.
+	//if *startDashboard {
+	//	runDashboard()
+	//	os.Exit(0)
+	//}
 	LaunchEmbeddedIfDoubleClicked()
 
 	mutex.Lock()
