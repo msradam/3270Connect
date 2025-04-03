@@ -1201,6 +1201,13 @@ func runDashboard() {
 	setupConsoleHandler()
 	setupTerminalConsoleHandler()
 	http.HandleFunc("/dashboard", func(w http.ResponseWriter, r *http.Request) {
+		// Check if the dashboardTemplate is nil
+		if dashboardTemplate == nil {
+			pterm.Error.Println("Dashboard template is nil. Ensure the template is loaded correctly.")
+			http.Error(w, "Internal Server Error: Dashboard template not loaded", http.StatusInternalServerError)
+			return
+		}
+
 		files, err := filepath.Glob(filepath.Join(dashboardDir, "metrics_*.json"))
 		if err != nil {
 			pterm.Warning.Println("Error listing metrics files:", err)
@@ -1298,6 +1305,7 @@ func runDashboard() {
 		}
 		if err := dashboardTemplate.Execute(w, data); err != nil {
 			pterm.Error.Printf("Dashboard template execution failed - HTML’s throwing a tantrum: %v\n", err)
+			http.Error(w, "Internal Server Error: Failed to render dashboard", http.StatusInternalServerError)
 		}
 	})
 	pterm.Info.Printf("Dashboard live at %s - check it out!\n", pterm.FgBlue.Sprintf("http://localhost:%d/dashboard", dashboardPort))
@@ -1431,9 +1439,13 @@ func (m Metrics) extend() ExtendedMetrics {
 	if timeLeft < 0 {
 		timeLeft = 0
 	}
-	status := "Completed"
-	if timeLeft > 0 {
+	status := "Unknown" // Default status for missing or incomplete metrics
+	if m.ActiveWorkflows > 0 {
 		status = "Running"
+	} else if timeLeft == 0 && m.TotalWorkflowsStarted > 0 && m.TotalWorkflowsCompleted == 0 {
+		status = "Killed"
+	} else if timeLeft == 0 {
+		status = "Ended"
 	}
 	return ExtendedMetrics{
 		Metrics:  m,
