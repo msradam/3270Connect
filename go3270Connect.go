@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -624,6 +625,7 @@ func LaunchEmbeddedIfDoubleClicked() {
 		pterm.Warning.Println("Dashboard mode not enabled. Skipping embedded browser launch.")
 		return
 	}
+
 	//if !isTerminal() {
 	*startDashboard = true
 	flag.Set("dashboard", "true")
@@ -634,10 +636,9 @@ func LaunchEmbeddedIfDoubleClicked() {
 
 	// Give it time to start
 	time.Sleep(1 * time.Second)
-
+	storeLog("Starting dashboard mode - no terminal detected")
 	// Launch the embedded browser
 	openDashboardEmbedded()
-	storeLog("Starting dashboard mode - no terminal detected")
 	return
 	//}
 }
@@ -740,15 +741,30 @@ func openDashboardEmbedded() {
 	// Set the icon for the WebView panel
 	iconPath := "logo.png" // Ensure this file exists in the working directory
 	if _, err := os.Stat(iconPath); err == nil {
-		// The SetIconFromFile method is not available in webview2.WebView.
-		// If setting an icon is necessary, consider alternative approaches or remove this line.
-		// For now, we will comment it out to avoid the compile error.
-		// w.SetIconFromFile(iconPath)
+		pterm.Info.Printf("Icon file %s found. Proceeding without setting icon (not supported in webview2).\n", iconPath)
 	} else {
 		pterm.Warning.Printf("Icon file %s not found. Skipping icon setup.\n", iconPath)
 	}
 
 	w.Navigate("http://localhost:9200/dashboard")
+
+	// Handle window close event to terminate the PID
+	// Handle process termination after the WebView2 window is closed
+	defer func() {
+		pterm.Info.Println("WebView2 window closed. Initiating shutdown.")
+		pid := os.Getpid()
+		proc, err := os.FindProcess(pid)
+		if err != nil {
+			pterm.Error.Printf("Failed to find process with PID %d: %v\n", pid, err)
+			return
+		}
+		if err := proc.Kill(); err != nil {
+			pterm.Error.Printf("Failed to terminate process with PID %d: %v\n", pid, err)
+		} else {
+			pterm.Success.Printf("Process with PID %d terminated successfully.\n", pid)
+		}
+	}()
+
 	w.Run()
 }
 
@@ -1734,7 +1750,7 @@ func killProcessHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Missing PID", http.StatusBadRequest)
 		return
 	}
-	storeLog("Killing process with PID: " + pidStr)
+	storeLog("Attempting to kill process with PID: " + pidStr)
 	pid, err := strconv.Atoi(pidStr)
 	if err != nil {
 		storeLog("Invalid PID: " + pidStr)
@@ -1748,9 +1764,19 @@ func killProcessHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := proc.Kill(); err != nil {
-		storeLog("Failed to kill process: " + pidStr)
-		http.Error(w, "Failed to kill process", http.StatusInternalServerError)
-		return
+		storeLog("Failed to kill process gracefully, attempting hard kill for PID: " + pidStr)
+		// Attempt a hard kill using platform-specific commands
+		var hardKillErr error
+		if runtime.GOOS == "windows" {
+			hardKillErr = exec.Command("taskkill", "/PID", pidStr, "/F").Run()
+		} else {
+			hardKillErr = exec.Command("kill", "-9", pidStr).Run()
+		}
+		if hardKillErr != nil {
+			storeLog("Failed to hard kill process: " + pidStr)
+			http.Error(w, "Failed to kill process", http.StatusInternalServerError)
+			return
+		}
 	}
 	storeLog("Process killed successfully PID: " + pidStr)
 	w.WriteHeader(http.StatusOK)
