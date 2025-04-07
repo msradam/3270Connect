@@ -37,9 +37,14 @@
       </button>
       <div class="collapse navbar-collapse" id="navbarNav">
         <ul class="navbar-nav ms-auto">
-          <li class="nav-item">
-            <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#consoleModal">
+          <li class="nav-item me-2">
+            <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#consoleModal" data-tippy-content="Show the Console Logs">
               Console Logs
+            </button>
+          </li>
+          <li class="nav-item">
+            <button class="btn btn-light" onclick="location.reload();" data-tippy-content="Refresh the Page">
+              <i class="fas fa-sync-alt"></i>
             </button>
           </li>
         </ul>
@@ -239,7 +244,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="killModalLabel">Confirm Kill Process</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" id="closeModal" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <p id="killDetails"></p>
@@ -519,12 +524,12 @@
         </td>
         <td style="color: green;">${metric.pid}</td>
         <td>${metric.status || '-'}</td>
-        <td>${(typeof metric.timeLeft !== 'undefined' && metric.timeLeft !== null) ? metric.timeLeft + 's' : '-'}</td>
+        <td>${(typeof metric.timeLeft !== 'undefined' && metric.timeLeft !== null && metric.timeLeft !== 0) ? metric.timeLeft + 's' : '-'}</td>
         <td>${metric.activeWorkflows || '-'}</td>
         <td>${metric.totalWorkflowsStarted || '-'}</td>
         <td>${metric.totalWorkflowsCompleted || '-'}</td>
         <td>${metric.totalWorkflowsFailed || '-'}</td>
-        <td>${isNaN(avgCompletionTime) ? 'N/A' : avgCompletionTime.toFixed(2) + 's'}</td>
+        <td>${isNaN(avgCompletionTime) ? '-' : avgCompletionTime.toFixed(2) + 's'}</td>
         <td>${metric.params || '-dashboard'}</td>
       `;
       tbody.appendChild(row);
@@ -578,6 +583,9 @@
         var modalInstance = bootstrap.Modal.getInstance(modalEl);
         if (modalInstance) {
           modalInstance.hide();
+          setTimeout(function() {
+          window.location.href = window.location.href;
+          }, 5000);
         }
       } else {
         return response.text().then((text) => {
@@ -614,11 +622,6 @@
     .then(response => {
       if (response.ok) {
         toastr.success('Sample app started successfully!');
-        var modalEl = document.getElementById("startAppModal");
-        var modalInstance = bootstrap.Modal.getInstance(modalEl);
-        if (modalInstance) {
-          modalInstance.hide();
-        }
       } else {
         return response.text().then((text) => {
           toastr.error(`Failed to start sample app: ${String(text)}`);
@@ -629,6 +632,15 @@
       console.error('Error starting sample app:', error);
       toastr.error(`An error occurred while starting the sample app: ${String(error.message)}`);
     });
+    
+    var modalEl = document.getElementById("startAppModal");
+    var modalInstance = bootstrap.Modal.getInstance(modalEl);
+    if (modalInstance) {
+      modalInstance.hide();
+    }
+    setTimeout(function() {
+      window.location.href = window.location.href;
+    }, 5000);
   }
 
   // Create a mapping for extended metrics keyed by PID
@@ -717,19 +729,36 @@
   }
 
   function killProcess(pid) {
-    fetch('/kill?pid=' + pid, { method: 'POST' })
+    fetch('/kill?pid=' + encodeURIComponent(pid), { method: 'POST' })
       .then(response => {
-        if (response.ok) {
-          toastr.success('Process ' + pid + ' killed.');
-          location.reload();
-        } else {
-          toastr.error('Failed to kill process ' + pid);
-        }
+        return response.text().then(text => {
+          if (response.ok) {
+            toastr.success(text);
+          } else {
+            toastr.error(text);
+          }
+        });
       });
-    document.getElementById("killModal").style.display = "none";
+    var killModal = document.getElementById("killModal");
+    var modalInstance = document.getElementById("killModal");
+    var modalInstance = bootstrap.Modal.getInstance(killModal);
+    if (modalInstance) {
+        modalInstance.hide();
+    }
+    setTimeout(function() {
+      window.location.href = window.location.href;
+    }, 5000);
   }
+
   document.getElementById("closeModal").onclick = function() {
-    document.getElementById("killModal").style.display = "none";
+    var killModal = document.getElementById("killModal");
+    var modalInstance = bootstrap.Modal.getInstance(killModal);
+    if (modalInstance) {
+        modalInstance.hide();
+    }
+    setTimeout(function() {
+      window.location.href = window.location.href;
+    }, 5000);
   };
 </script>
 </body>

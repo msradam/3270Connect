@@ -1036,6 +1036,7 @@ func runConcurrentWorkflows(config *Configuration) {
 
 	// Note: If you already print the dashboard message in main, you might remove this duplicate.
 	storeLog("All workflows completed")
+	updateMetricsFile()
 }
 
 // Helper functions for summary status
@@ -1270,7 +1271,11 @@ func runDashboard() {
 		for _, m := range metricsList {
 			extended = append(extended, m.extend())
 		}
-		extendedJSON, _ := json.Marshal(extended)
+		extendedJSON, err := json.Marshal(extended)
+		if err != nil {
+			pterm.Error.Printf("Error marshaling extended metrics: %v\n", err)
+		}
+
 		data := struct {
 			ActiveWorkflows                 int
 			TotalWorkflowsStarted           int64
@@ -1453,8 +1458,15 @@ func (m Metrics) extend() ExtendedMetrics {
 		status = "Ended"
 	}
 	proc, _ := os.FindProcess(m.PID)
-	// Sending signal 0 does not kill the process but can be used to check for its existence.
-	if runtime.GOOS != "windows" {
+	if runtime.GOOS == "windows" {
+		// Use tasklist to check if the process is running
+		cmd := exec.Command("tasklist", "/FI", fmt.Sprintf("PID eq %d", m.PID))
+		output, err := cmd.Output()
+		if err != nil || !strings.Contains(string(output), fmt.Sprintf("%d", m.PID)) {
+			status = "Killed"
+		}
+	} else {
+		// Sending signal 0 does not kill the process but can be used to check for its existence.
 		if err := proc.Signal(syscall.Signal(0)); err != nil {
 			status = "Killed"
 		}
@@ -1788,9 +1800,13 @@ func killProcessHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Process not found", http.StatusNotFound)
 		return
 	}
+	if pid == os.Getpid() {
+		storeLog("Attempting to kill the dashboard process itself")
+		http.Error(w, "Cannot kill the dashboard process itself", http.StatusForbidden)
+		return
+	}
 	if err := proc.Kill(); err != nil {
 		storeLog("Failed to kill process gracefully, attempting hard kill for PID: " + pidStr)
-		// Attempt a hard kill using platform-specific commands
 		var hardKillErr error
 		if runtime.GOOS == "windows" {
 			hardKillErr = exec.Command("taskkill", "/PID", pidStr, "/F").Run()
@@ -1803,7 +1819,70 @@ func killProcessHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
+	// Update the metrics file to reflect the "Killed" status
+	updateKilledStatus(pid)
+
+	// Force the dashboard to reload the updated metrics
+	updateMetricsFile()
+
 	storeLog("Process killed successfully PID: " + pidStr)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Process killed successfully"))
+}
+
+func updateKilledStatus(pid int) {
+	//pterm.Info.Printf("Updating killed status for process with PID %d\n", pid)
+	storeLog(fmt.Sprintf("Updating killed status for process with PID %d", pid))
+
+	dashboardDir, err := os.UserConfigDir()
+	if err != nil {
+		pterm.Warning.Println("Failed to get UserConfigDir, defaulting to local dashboard directory")
+		dashboardDir = filepath.Join(".", "dashboard")
+	} else {
+		dashboardDir = filepath.Join(dashboardDir, "3270Connect", "dashboard")
+	}
+	metricsFile := filepath.Join(dashboardDir, fmt.Sprintf("metrics_%d.json", pid))
+	//pterm.Info.Printf("Reading metrics file: %s\n", metricsFile)
+	storeLog(fmt.Sprintf("Reading metrics file: %s", metricsFile))
+
+	data, err := ioutil.ReadFile(metricsFile)
+	if err != nil {
+		pterm.Warning.Printf("Failed to read metrics file for PID %d: %v\n", pid, err)
+		storeLog(fmt.Sprintf("Failed to read metrics file for PID %d: %v", pid, err))
+		return
+	}
+	var metrics Metrics
+	if err := json.Unmarshal(data, &metrics); err != nil {
+		pterm.Warning.Printf("Failed to unmarshal metrics for PID %d: %v\n", pid, err)
+		storeLog(fmt.Sprintf("Failed to unmarshal metrics for PID %d: %v", pid, err))
+		return
+	}
+
+	//pterm.Info.Printf("Clearing existing workflow metrics for PID %d\n", pid)
+	storeLog(fmt.Sprintf("Clearing existing workflow metrics for PID %d", pid))
+	metrics.ActiveWorkflows = 0
+	metrics.TotalWorkflowsStarted = 0
+	metrics.TotalWorkflowsCompleted = 0
+	metrics.TotalWorkflowsFailed = 0
+	metrics.Durations = []float64{}
+	metrics.CPUUsage = []float64{}
+	metrics.MemoryUsage = []float64{}
+
+	extendedMetrics := metrics.extend()
+	extendedMetrics.Status = "Killed"
+
+	updatedData, err := json.Marshal(extendedMetrics)
+	if err != nil {
+		pterm.Warning.Printf("Failed to marshal updated metrics for PID %d: %v\n", pid, err)
+		storeLog(fmt.Sprintf("Failed to marshal updated metrics for PID %d: %v", pid, err))
+		return
+	}
+	if err := ioutil.WriteFile(metricsFile, updatedData, 0644); err != nil {
+		pterm.Warning.Printf("Failed to write updated metrics for PID %d: %v\n", pid, err)
+		storeLog(fmt.Sprintf("Failed to write updated metrics for PID %d: %v", pid, err))
+		return
+	}
+	//pterm.Info.Printf("Successfully updated metrics for PID %d to status 'Killed'\n", pid)
+	storeLog(fmt.Sprintf("Successfully updated metrics for PID %d to status 'Killed'", pid))
 }

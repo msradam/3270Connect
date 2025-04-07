@@ -188,7 +188,7 @@ func startMetricsUpdater() {
 		metrics := Metrics{
 			PID:                     pid,
 			ActiveWorkflows:         0,
-			TotalWorkflowsStarted:   1,
+			TotalWorkflowsStarted:   0,
 			TotalWorkflowsCompleted: 0,
 			TotalWorkflowsFailed:    0,
 			Durations:               []float64{},
