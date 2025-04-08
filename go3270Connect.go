@@ -36,7 +36,7 @@ import (
 	"github.com/shirou/gopsutil/mem"
 )
 
-const version = "1.4"
+const version = "1.4.1"
 
 var errorList []error
 var errorMutex sync.Mutex
@@ -1122,20 +1122,29 @@ func validateConfiguration(config *Configuration) error {
 			return fmt.Errorf("output file path is empty - screen grab needs a home")
 		}
 	}
+
 	for _, step := range config.Steps {
-		switch step.Type {
-		case "Connect", "AsciiScreenGrab", "PressEnter", "Disconnect":
+		// Allow steps that do not require additional configuration.
+		if step.Type == "Connect" ||
+			step.Type == "AsciiScreenGrab" ||
+			step.Type == "PressEnter" ||
+			step.Type == "PressTab" ||
+			step.Type == "Disconnect" ||
+			(strings.HasPrefix(step.Type, "PressPF")) {
 			continue
-		case "CheckValue", "FillString":
+		}
+		// Steps that require coordinates and text.
+		if step.Type == "CheckValue" || step.Type == "FillString" {
 			if step.Coordinates.Row == 0 || step.Coordinates.Column == 0 {
 				return fmt.Errorf("coords missing in %s step - lost in space", step.Type)
 			}
 			if step.Text == "" {
 				return fmt.Errorf("text empty in %s step - cat got your tongue?", step.Type)
 			}
-		default:
-			return fmt.Errorf("unknown step type: %s - what’s this nonsense?", step.Type)
+			continue
 		}
+		// Unknown step type.
+		return fmt.Errorf("unknown step type: %s - what’s this nonsense?", step.Type)
 	}
 	return nil
 }
