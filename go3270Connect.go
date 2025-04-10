@@ -36,7 +36,7 @@ import (
 	"github.com/shirou/gopsutil/mem"
 )
 
-const version = "1.4.1"
+const version = "1.4.2"
 
 var errorList []error
 var errorMutex sync.Mutex
@@ -706,7 +706,7 @@ func main() {
 		if concurrent > 1 {
 			runConcurrentWorkflows(config)
 		} else {
-			runWorkflow(7000, config)
+			runWorkflow(lastUsedPort, config)
 		}
 		if concurrent > 1 && dashboardStarted {
 			pterm.Info.Printf("All workflows completed but the dashboard is still running on port %d. Press Ctrl+C to exit.", dashboardPort)
