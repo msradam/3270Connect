@@ -36,7 +36,7 @@ import (
 	"github.com/shirou/gopsutil/mem"
 )
 
-const version = "1.4.2"
+const version = "1.4.3"
 
 var errorList []error
 var errorMutex sync.Mutex
@@ -703,7 +703,7 @@ func main() {
 	if runAPI {
 		runAPIWorkflow()
 	} else {
-		if concurrent > 1 {
+		if concurrent > 1 || runtimeDuration > 0 {
 			runConcurrentWorkflows(config)
 		} else {
 			runWorkflow(lastUsedPort, config)

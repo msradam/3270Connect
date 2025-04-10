@@ -14,6 +14,7 @@ go build -ldflags="-H=windowsgui" -o 3270Connect_GUI.exe go3270Connect.go
 Write-Output 'Building Linux version...'
 $env:GOOS = "linux"
 $env:GOARCH = "amd64"
+$env:CGO_ENABLED = "0"
 go build -o 3270Connect_linux go3270Connect.go
 
 # Reset environment variables to avoid affecting future builds
