@@ -147,8 +147,12 @@ jobs:
         run: |
           mkdocs build
 
+      - name: Add CNAME file
+        run: echo "3270.io" > ./site/CNAME
+
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./site
+

@@ -35,10 +35,7 @@ plugins:
   - mkdocs-video:
       is_video: true
       video_autoplay: false
-  - simple:
-      files:
-        - src: CNAME
-          dest: CNAME
+  - simple
 
 markdown_extensions:
   - admonition
@@ -65,4 +62,4 @@ markdown_extensions:
 
 extra:
   version: 1.5
-  CNAME: 3270connect.io  # Custom domain for GitHub Pages
+  CNAME: 3270.io  # Custom domain for GitHub Pages
