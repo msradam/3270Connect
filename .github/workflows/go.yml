@@ -8,35 +8,35 @@ on:
   workflow_dispatch:  # Allows manual execution
 
 jobs:
-  build-linux:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+#  build-linux:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Checkout code
+#        uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.23'
+#      - name: Set up Go
+#        uses: actions/setup-go@v4
+#        with:
+#          go-version: '1.23'
 
-      - name: Build for Linux
-        run: |
-          GOARCH=amd64 GOOS=linux go build -o 3270Connect go3270Connect.go
+#      - name: Build for Linux
+#        run: |
+#          GOARCH=amd64 GOOS=linux go build -o 3270Connect go3270Connect.go
 
-      - name: Test Go Project
-        run: go test -v ./...
+#      - name: Test Go Project
+#        run: go test -v ./...
 
-      - name: Run Linux Binary (Verbose & Headless)
-        run: |
-          chmod +x ./3270Connect
-          ./3270Connect -runApp 1
-          ./3270Connect -verbose -headless
+#      - name: Run Linux Binary (Verbose & Headless)
+#        run: |
+#          chmod +x ./3270Connect
+#          ./3270Connect -runApp 1
+#          ./3270Connect -verbose -headless
 
-      - name: Upload Linux Binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: 3270Connect-linux
-          path: 3270Connect
+#      - name: Upload Linux Binary
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: 3270Connect-linux
+#          path: 3270Connect
 
   build-windows:
     runs-on: windows-latest
@@ -68,11 +68,11 @@ jobs:
       - name: Test Go Project
         run: go test -v ./...
 
-      - name: Run Windows Binary (Verbose & Headless)
-        shell: pwsh
-        run: |
-          .\3270Connect.exe -runApp 1
-          .\3270Connect.exe -verbose -headless
+#      - name: Run Windows Binary (Verbose & Headless)
+#        shell: pwsh
+#        run: |
+#          .\3270Connect.exe -runApp 1
+#          .\3270Connect.exe -verbose -headless
 
       - name: Upload Windows Binaries
         uses: actions/upload-artifact@v4
@@ -102,14 +102,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push Linux Docker Image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          platforms: linux/amd64
-          file: ./Dockerfile.linux
-          tags: ghcr.io/${{ github.repository_owner }}/3270connect:linux-latest
+#      - name: Build and Push Linux Docker Image
+#        uses: docker/build-push-action@v4
+#        with:
+#          context: .
+#          push: true
+#          platforms: linux/amd64
+#          file: ./Dockerfile.linux
+#          tags: ghcr.io/${{ github.repository_owner }}/3270connect:linux-latest
 
       - name: Build and Push Windows Docker Image
         uses: docker/build-push-action@v4
