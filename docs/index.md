@@ -1,6 +1,6 @@
 
  <div style="text-align: left;">
-  <img src="logo.png" alt="3270.io" style="max-width: 200px; height: auto;">
+  <img src="https://3270.io/logo.png" alt="3270.io" style="max-width: 200px; height: auto;">
 </div>
 
 ## Introduction
