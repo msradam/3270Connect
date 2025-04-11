@@ -2,8 +2,8 @@ site_name: 3270Connect
 site_description: User Guide for the 3270Connect Command-Line Utility
 site_author: 3270.io
 copyright: "© 2023-2025 3270.io"
-site_url: https://3270io.github.io/3270Connect
-repo_url: https://github.com/3270io/3270Connect
+site_url: https://3270io.github.io
+repo_url: https://github.com/3270io
 edit_uri: edit/main/docs/
 
 # Directory for MkDocs output (GitHub Pages uses `gh-pages` branch)
@@ -11,7 +11,7 @@ site_dir: site
 
 theme:
   name: material
-  logo: assets/logo.png  # Ensure this file exists in `docs/assets/`
+  logo: logo.png  # Ensure this file exists in `docs/assets/`
   palette:
     primary: teal
   features:
