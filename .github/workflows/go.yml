@@ -111,23 +111,23 @@ jobs:
 #          file: ./Dockerfile.linux
 #          tags: ghcr.io/${{ github.repository_owner }}/3270connect:linux-latest
 
-      - name: Build and Push Windows Docker Image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          platforms: windows/amd64
-          file: ./Dockerfile.windows
-          tags: ghcr.io/${{ github.repository_owner }}/3270connect:windows-latest
+#      - name: Build and Push Windows Docker Image
+#        uses: docker/build-push-action@v4
+#        with:
+#          context: .
+#          push: true
+#          platforms: windows/amd64
+#          file: ./Dockerfile.windows
+#          tags: ghcr.io/${{ github.repository_owner }}/3270connect:windows-latest
 
-      - name: Build and Push Windows GUI Docker Image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          platforms: windows/amd64
-          file: ./Dockerfile.windows.gui
-          tags: ghcr.io/${{ github.repository_owner }}/3270connect:windows-gui-latest
+#      - name: Build and Push Windows GUI Docker Image
+##        uses: docker/build-push-action@v4
+#        with:
+#          context: .
+#          push: true
+#          platforms: windows/amd64
+#          file: ./Dockerfile.windows.gui
+#          tags: ghcr.io/${{ github.repository_owner }}/3270connect:windows-gui-latest
 
   build-and-deploy-mkdocs:
     runs-on: ubuntu-latest
@@ -147,5 +147,3 @@ jobs:
         run: |
           mkdocs build
 
-      - name: Add CNAME file
-        run: echo "3270connect.io" > ./site/CNAME
