@@ -177,6 +177,10 @@
               <label for="configFileInput" class="form-label">Configuration File</label>
               <input type="file" class="form-control" id="configFileInput" name="configFile" accept=".json" required>
             </div>
+          <div class="mb-3">
+            <label for="injectionConfigInput" class="form-label">Injection Config File (Optional)</label>
+            <input type="file" class="form-control" id="injectionConfigInput" name="injectionConfig" accept=".json">
+          </div>
             <div class="mb-3">
               <label for="concurrentInput" class="form-label">Concurrent Workflows</label>
               <input type="number" class="form-control" id="concurrentInput" name="concurrent" placeholder="Enter number of concurrent workflows" value="5" required>
@@ -567,6 +571,12 @@
     // All required fields provided; build FormData manually
     var formData = new FormData();
     formData.append("configFile", configFileInput.files[0]);
+
+    var injectionConfigInput = document.getElementById('injectionConfigInput');
+    if (injectionConfigInput.files && injectionConfigInput.files.length > 0) {
+      formData.append("injectionConfig", injectionConfigInput.files[0]);
+    }
+
     formData.append("concurrent", document.getElementById('concurrentInput').value);
     formData.append("runtime", document.getElementById('runtimeInput').value);
     formData.append("startPort", document.getElementById('startPortInput').value);

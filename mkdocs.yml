@@ -1,7 +1,7 @@
 site_name: 3270Connect
 site_description: User Guide for the 3270Connect Command-Line Utility
 site_author: 3270.io
-copyright: "© 2023-2024 3270.io"
+copyright: "© 2023-2025 3270.io"
 site_url: https://3270io.github.io/3270Connect
 repo_url: https://github.com/3270io/3270Connect
 edit_uri: edit/main/docs/
@@ -27,6 +27,7 @@ nav:
   - Installation: installation.md
   - Basic Usage: basic-usage.md
   - Workflow Actions: workflow.md
+  - Dynamic Field Injection: injection-config.md
   - Advanced Features: advanced-features.md
 
 plugins:
@@ -59,4 +60,4 @@ markdown_extensions:
   - footnotes
 
 extra:
-  version: 1.0.7
+  version: 1.5

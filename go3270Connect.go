@@ -36,7 +36,7 @@ import (
 	"github.com/shirou/gopsutil/mem"
 )
 
-const version = "1.4.3"
+const version = "1.5"
 
 var errorList []error
 var errorMutex sync.Mutex
@@ -61,6 +61,7 @@ type Step struct {
 
 var (
 	configFile      string
+	injectionConfig string
 	showHelp        bool
 	runAPI          bool
 	apiPort         int
@@ -118,6 +119,7 @@ var programStart time.Time
 
 func init() {
 	flag.StringVar(&configFile, "config", "workflow.json", "Path to the configuration file")
+	flag.StringVar(&injectionConfig, "injectionConfig", "", "Path to the injection configuration file")
 	flag.BoolVar(&showHelp, "help", false, "Show usage information")
 	flag.BoolVar(&runAPI, "api", false, "Run as API")
 	flag.IntVar(&apiPort, "api-port", 8080, "API port")
@@ -704,7 +706,8 @@ func main() {
 		runAPIWorkflow()
 	} else {
 		if concurrent > 1 || runtimeDuration > 0 {
-			runConcurrentWorkflows(config)
+			runConcurrentWorkflows(config, injectionConfig)
+
 		} else {
 			runWorkflow(lastUsedPort, config)
 		}
@@ -771,10 +774,32 @@ func openDashboardEmbedded() {
 
 var stopTicker chan struct{}
 
-func runConcurrentWorkflows(config *Configuration) {
+func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 	overallStart := time.Now()
 	semaphore := make(chan struct{}, concurrent)
 	var wg sync.WaitGroup
+
+	var injectData []map[string]string
+
+	// Load injection data if the file is provided
+	if injectionConfig != "" {
+		if _, err := os.Stat(injectionConfig); err == nil {
+			injectData, err = loadInjectionData(injectionConfig)
+			if err != nil {
+				pterm.Error.Printf("Failed to load injection data: %v\n", err)
+				return
+			} else {
+				pterm.Info.Printf("Loaded %d injection entries from %s\n", len(injectData), injectionConfig)
+			}
+		} else {
+			pterm.Warning.Printf("Injection file %s not found. Proceeding without injection.\n", injectionConfig)
+		}
+	}
+
+	// Ensure we have at least one injection entry or proceed with the base configuration
+	if len(injectData) == 0 {
+		injectData = []map[string]string{{}} // Use an empty map if no injection data is provided
+	}
 
 	var multi pterm.MultiPrinter
 	var durationBar *pterm.ProgressbarPrinter
@@ -908,10 +933,15 @@ func runConcurrentWorkflows(config *Configuration) {
 			for i := 0; i < batchSize; i++ {
 				semaphore <- struct{}{}
 				wg.Add(1)
-				go func() {
+
+				// Cycle through the injection data using modulo
+				injection := injectData[i%len(injectData)]
+				userConfig := injectDynamicValues(config, injection)
+
+				go func(userConfig *Configuration) {
 					defer wg.Done()
 					portToUse := getNextAvailablePort()
-					err := runWorkflow(portToUse, config)
+					err := runWorkflow(portToUse, userConfig)
 					if err != nil {
 						if connect3270.Verbose {
 							pterm.Error.Printf("Workflow on port %d error: %v\n", portToUse, err)
@@ -919,7 +949,7 @@ func runConcurrentWorkflows(config *Configuration) {
 						storeLog(fmt.Sprintf("Workflow on port %d error: %v", portToUse, err))
 					}
 					<-semaphore
-				}()
+				}(userConfig)
 			}
 			cpuPercent, _ := cpu.Percent(0, false)
 			memStats, _ := mem.VirtualMemory()
@@ -1742,6 +1772,25 @@ func startProcessHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Retrieve the injection configuration file (optional)
+	var injectionConfigPath string
+	injectionFile, injectionHandler, err := r.FormFile("injectionConfig")
+	if err == nil {
+		defer injectionFile.Close()
+		injectionConfigPath = filepath.Join(os.TempDir(), injectionHandler.Filename)
+		injectionTempFile, err := os.Create(injectionConfigPath)
+		if err != nil {
+			http.Error(w, "Failed to save injection configuration file", http.StatusInternalServerError)
+			return
+		}
+		defer injectionTempFile.Close()
+
+		if _, err := io.Copy(injectionTempFile, injectionFile); err != nil {
+			http.Error(w, "Failed to save injection configuration file", http.StatusInternalServerError)
+			return
+		}
+	}
+
 	// Retrieve other form fields
 	concurrent := r.FormValue("concurrent")
 	runtime := r.FormValue("runtime")
@@ -1753,6 +1802,10 @@ func startProcessHandler(w http.ResponseWriter, r *http.Request) {
 		tempFilePath, concurrent, runtime, startPort)
 	if headless {
 		command += " -headless"
+	}
+
+	if injectionConfigPath != "" {
+		command += fmt.Sprintf(" -injectionConfig %s", injectionConfigPath)
 	}
 
 	storeLog("Command to execute: " + command)
@@ -1894,4 +1947,37 @@ func updateKilledStatus(pid int) {
 	}
 	//pterm.Info.Printf("Successfully updated metrics for PID %d to status 'Killed'\n", pid)
 	storeLog(fmt.Sprintf("Successfully updated metrics for PID %d to status 'Killed'", pid))
+}
+
+func loadInjectionData(filePath string) ([]map[string]string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var injectData []map[string]string
+	decoder := json.NewDecoder(file)
+	err = decoder.Decode(&injectData)
+	if err != nil {
+		return nil, err
+	}
+
+	return injectData, nil
+}
+
+func injectDynamicValues(config *Configuration, injection map[string]string) *Configuration {
+	newConfig := *config // Create a copy of the configuration
+	newConfig.Steps = make([]Step, len(config.Steps))
+	copy(newConfig.Steps, config.Steps)
+
+	for i, step := range newConfig.Steps {
+		for placeholder, value := range injection {
+			if strings.Contains(step.Text, placeholder) {
+				newConfig.Steps[i].Text = strings.ReplaceAll(step.Text, placeholder, value)
+			}
+		}
+	}
+
+	return &newConfig
 }
