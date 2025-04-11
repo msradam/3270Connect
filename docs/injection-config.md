@@ -21,7 +21,7 @@ The injection configuration is defined in a JSON file. Below is an example struc
 ]
 ```
 
-The workflow configuration is then define to use the key names of the injection cxonfiguration file. Below is an example structure:
+The workflow configuration is then define to use the key names of the injection configuration file. Below is an example structure:
 
 ```json
   "Steps": [
@@ -43,7 +43,7 @@ The workflow configuration is then define to use the key names of the injection 
 To use an injection configuration file, pass it as a parameter when running `3270Connect`:
 
 ```bash
-3270Connect -config workflow.json -inject injection-config.json
+3270Connect -config workflow.json -injectionConfig injection.json
 ```
 
 ## Example
@@ -51,7 +51,7 @@ To use an injection configuration file, pass it as a parameter when running `327
 Here is an example of running a workflow with an injection configuration:
 
 ```bash
-3270Connect -config workflow.json -inject injection-config.json
+3270Connect -config workflow.json -injectionConfig injection.json
 ```
 
 This will replace the specified fields in the workflow with the values provided in the injection configuration.
