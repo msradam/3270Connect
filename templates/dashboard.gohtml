@@ -437,6 +437,27 @@
         height: 300px;
       }
     }
+
+    /* Maximized modal styles */
+    .modal-maximized {
+      max-width: 100vw !important;
+      margin: 0 !important;
+      height: 100vh;
+    }
+
+    .modal-maximized .modal-content {
+      height: 100vh;
+      border-radius: 0;
+    }
+
+    .modal-maximized .modal-body {
+      max-height: calc(100vh - 180px);
+      overflow-y: auto;
+    }
+
+    .modal-maximized #logsContainer {
+      max-height: calc(100vh - 450px) !important;
+    }
   </style>
 </head>
 <body>
@@ -472,22 +493,18 @@
         <p class="subtitle" data-tippy-content="Metrics are grouped by Process ID (PID).">Real-time Workflow Monitoring & Management</p>
         <div class="d-flex flex-wrap justify-content-around mt-4">
           <div class="metric-card active" data-tippy-content="Number of workflows currently running.">
-            <i class="fas fa-spinner fa-spin metric-icon"></i>
             <h5>Active Workflows</h5>
             <p class="metric-value">{{.ActiveWorkflows}}</p>
           </div>
           <div class="metric-card started" data-tippy-content="Total number of workflows that have been started.">
-            <i class="fas fa-play-circle metric-icon"></i>
             <h5>Total Started</h5>
             <p class="metric-value">{{.TotalWorkflowsStarted}}</p>
           </div>
           <div class="metric-card completed" data-tippy-content="Total number of workflows that have completed successfully.">
-            <i class="fas fa-check-circle metric-icon"></i>
             <h5>Completed</h5>
             <p class="metric-value">{{.TotalWorkflowsCompleted}}</p>
           </div>
           <div class="metric-card failed" data-tippy-content="Total number of workflows that have failed.">
-            <i class="fas fa-times-circle metric-icon"></i>
             <h5>Failed</h5>
             <p class="metric-value">{{.TotalWorkflowsFailed}}</p>
           </div>
@@ -522,6 +539,10 @@
       <div class="col-md-6">
         <div class="chart-wrapper" data-tippy-content="This chart shows the duration of workflows over time.">
           <h3><i class="fas fa-clock"></i> Workflow Duration</h3>
+          <div class="mb-3">
+            <label for="durationDataPoints" class="form-label">Show last <span id="durationDataPointsValue">30</span> data points</label>
+            <input type="range" class="form-range" id="durationDataPoints" min="10" max="100" value="30" step="5">
+          </div>
           <div class="chart-container">
             <canvas id="durationChart"></canvas>
           </div>
@@ -530,6 +551,10 @@
       <div class="col-md-6">
         <div class="chart-wrapper" data-tippy-content="This chart shows CPU and memory usage over time.">
           <h3><i class="fas fa-chart-line"></i> System Resources</h3>
+          <div class="mb-3">
+            <label for="resourcesDataPoints" class="form-label">Show last <span id="resourcesDataPointsValue">30</span> data points</label>
+            <input type="range" class="form-range" id="resourcesDataPoints" min="10" max="100" value="30" step="5">
+          </div>
           <div class="chart-container">
             <canvas id="cpuMemChart"></canvas>
           </div>
@@ -561,11 +586,19 @@
   </div>
   <!-- Modal for Console Logs -->
   <div class="modal fade" id="consoleModal" tabindex="-1" aria-labelledby="consoleModalLabel" style="display: none;">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-lg" id="consoleModalDialog">
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title" id="consoleModalLabel">Console Logs</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-sm btn-light" id="maximizeConsoleBtn" onclick="maximizeConsoleModal()" data-tippy-content="Maximize">
+              <i class="fas fa-expand"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-light" id="restoreConsoleBtn" onclick="restoreConsoleModal()" style="display: none;" data-tippy-content="Restore">
+              <i class="fas fa-compress"></i>
+            </button>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
         </div>
         <div class="modal-body">
           <div id="pidParamsContainer" class="mb-3 p-3 bg-light border rounded"></div>
@@ -768,29 +801,38 @@
       'rgba(255, 206, 86, 1)'    // Yellow
     ];
     
-    var datasets = [];
-    metricsData.forEach(function(metric, index) {
-      var data = new Array(maxCount - metric.durations.length).fill(null).concat(metric.durations);
-      datasets.push({
-        label: "PID " + metric.pid,
-        data: data,
-        borderColor: colors[index % colors.length],
-        backgroundColor: colors[index % colors.length].replace("1)", "0.1)"),
-        fill: true,
-        tension: 0.4,
-        borderWidth: 3,
-        pointRadius: 4,
-        pointHoverRadius: 6,
-        pointBackgroundColor: colors[index % colors.length],
-        pointBorderColor: '#fff',
-        pointBorderWidth: 2
+    // Function to prepare datasets with limited data points
+    function prepareDurationDatasets(dataPointLimit) {
+      var datasets = [];
+      metricsData.forEach(function(metric, index) {
+        var fullData = new Array(maxCount - metric.durations.length).fill(null).concat(metric.durations);
+        var limitedData = fullData.slice(-dataPointLimit);
+        datasets.push({
+          label: "PID " + metric.pid,
+          data: limitedData,
+          borderColor: colors[index % colors.length],
+          backgroundColor: colors[index % colors.length].replace("1)", "0.1)"),
+          fill: true,
+          tension: 0.4,
+          borderWidth: 3,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          pointBackgroundColor: colors[index % colors.length],
+          pointBorderColor: '#fff',
+          pointBorderWidth: 2
+        });
       });
-    });
+      return datasets;
+    }
+    
+    function prepareDurationLabels(dataPointLimit) {
+      return labels.slice(-dataPointLimit);
+    }
     
     var ctx1 = document.getElementById("durationChart").getContext("2d");
-    new Chart(ctx1, {
+    var durationChart = new Chart(ctx1, {
       type: "line",
-      data: { labels: labels, datasets: datasets },
+      data: { labels: prepareDurationLabels(30), datasets: prepareDurationDatasets(30) },
       options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -832,6 +874,15 @@
         }
       }
     });
+    
+    // Add event listener for duration data points slider
+    document.getElementById('durationDataPoints').addEventListener('input', function(e) {
+      var dataPointLimit = parseInt(e.target.value);
+      document.getElementById('durationDataPointsValue').textContent = dataPointLimit;
+      durationChart.data.labels = prepareDurationLabels(dataPointLimit);
+      durationChart.data.datasets = prepareDurationDatasets(dataPointLimit);
+      durationChart.update();
+    });
     var aggregatedCPU = [];
     var cpuCount = [];
     metricsData.forEach(function(metric) {
@@ -852,38 +903,50 @@
     var maxLen = Math.max(aggregatedCPU.length, hostMemory.length);
     var labels2 = [];
     for (var i = 0; i < maxLen; i++) { labels2.push(" " + (i + 1)); }
-    var cpuMemDatasets = [ {
-      label: "CPU Usage (%)",
-      data: new Array(maxLen - aggregatedCPU.length).fill(null).concat(aggregatedCPU),
-      borderColor: "rgba(102, 126, 234, 1)",
-      backgroundColor: "rgba(102, 126, 234, 0.1)",
-      fill: true,
-      tension: 0.4,
-      borderWidth: 3,
-      pointRadius: 4,
-      pointHoverRadius: 6,
-      pointBackgroundColor: "rgba(102, 126, 234, 1)",
-      pointBorderColor: '#fff',
-      pointBorderWidth: 2
-    },
-    {
-      label: "Memory Usage (%)",
-      data: new Array(maxLen - hostMemory.length).fill(null).concat(hostMemory),
-      borderColor: "rgba(245, 87, 108, 1)",
-      backgroundColor: "rgba(245, 87, 108, 0.1)",
-      fill: true,
-      tension: 0.4,
-      borderWidth: 3,
-      pointRadius: 4,
-      pointHoverRadius: 6,
-      pointBackgroundColor: "rgba(245, 87, 108, 1)",
-      pointBorderColor: '#fff',
-      pointBorderWidth: 2
-    }];
+    
+    // Function to prepare resource datasets with limited data points
+    function prepareResourceDatasets(dataPointLimit) {
+      var fullCpuData = new Array(maxLen - aggregatedCPU.length).fill(null).concat(aggregatedCPU);
+      var fullMemData = new Array(maxLen - hostMemory.length).fill(null).concat(hostMemory);
+      
+      return [{
+        label: "CPU Usage (%)",
+        data: fullCpuData.slice(-dataPointLimit),
+        borderColor: "rgba(102, 126, 234, 1)",
+        backgroundColor: "rgba(102, 126, 234, 0.1)",
+        fill: true,
+        tension: 0.4,
+        borderWidth: 3,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        pointBackgroundColor: "rgba(102, 126, 234, 1)",
+        pointBorderColor: '#fff',
+        pointBorderWidth: 2
+      },
+      {
+        label: "Memory Usage (%)",
+        data: fullMemData.slice(-dataPointLimit),
+        borderColor: "rgba(245, 87, 108, 1)",
+        backgroundColor: "rgba(245, 87, 108, 0.1)",
+        fill: true,
+        tension: 0.4,
+        borderWidth: 3,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        pointBackgroundColor: "rgba(245, 87, 108, 1)",
+        pointBorderColor: '#fff',
+        pointBorderWidth: 2
+      }];
+    }
+    
+    function prepareResourceLabels(dataPointLimit) {
+      return labels2.slice(-dataPointLimit);
+    }
+    
     var ctx2 = document.getElementById("cpuMemChart").getContext("2d");
-    new Chart(ctx2, {
+    var cpuMemChart = new Chart(ctx2, {
       type: "line",
-      data: { labels: labels2, datasets: cpuMemDatasets },
+      data: { labels: prepareResourceLabels(30), datasets: prepareResourceDatasets(30) },
       options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -931,6 +994,15 @@
           } 
         }
       }
+    });
+    
+    // Add event listener for resources data points slider
+    document.getElementById('resourcesDataPoints').addEventListener('input', function(e) {
+      var dataPointLimit = parseInt(e.target.value);
+      document.getElementById('resourcesDataPointsValue').textContent = dataPointLimit;
+      cpuMemChart.data.labels = prepareResourceLabels(dataPointLimit);
+      cpuMemChart.data.datasets = prepareResourceDatasets(dataPointLimit);
+      cpuMemChart.update();
     });
     var pidSelect = document.getElementById("pidFilter");
     var optionAll = document.createElement("option");
@@ -1382,6 +1454,21 @@
       window.location.href = window.location.href;
     }, 5000);
   };
+
+  // Functions for maximizing and restoring console modal
+  function maximizeConsoleModal() {
+    var modalDialog = document.getElementById("consoleModalDialog");
+    modalDialog.classList.add("modal-maximized");
+    document.getElementById("maximizeConsoleBtn").style.display = "none";
+    document.getElementById("restoreConsoleBtn").style.display = "inline-block";
+  }
+
+  function restoreConsoleModal() {
+    var modalDialog = document.getElementById("consoleModalDialog");
+    modalDialog.classList.remove("modal-maximized");
+    document.getElementById("maximizeConsoleBtn").style.display = "inline-block";
+    document.getElementById("restoreConsoleBtn").style.display = "none";
+  }
 </script>
 </body>
 </html>
