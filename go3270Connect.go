@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
 	"flag"
@@ -1255,7 +1256,7 @@ func runDashboard() {
 			files = []string{}
 		}
 		var metricsList []Metrics
-		var totalStarted, totalCompleted, totalFailed, active int
+		var extendedList []ExtendedMetrics
 		for _, f := range files {
 			data, err := ioutil.ReadFile(f)
 			if err != nil {
@@ -1267,20 +1268,13 @@ func runDashboard() {
 				pterm.Warning.Printf("Error unmarshaling metrics %s: %v\n", f, err)
 				continue
 			}
-			metricsList = append(metricsList, m)
-			totalStarted += int(m.TotalWorkflowsStarted)
-			totalCompleted += int(m.TotalWorkflowsCompleted)
-			totalFailed += int(m.TotalWorkflowsFailed)
-			active += m.ActiveWorkflows
-		}
-		var hostMetrics *Metrics
-		if len(metricsList) > 0 {
-			hostMetrics = &metricsList[0]
-			for i := 1; i < len(metricsList); i++ {
-				if metricsList[i].PID < hostMetrics.PID {
-					hostMetrics = &metricsList[i]
-				}
+			extendedMetric := m.extend()
+			if shouldCleanupMetric(extendedMetric) {
+				cleanupProcessArtifacts(extendedMetric.PID, f)
+				continue
 			}
+			metricsList = append(metricsList, m)
+			extendedList = append(extendedList, extendedMetric)
 		}
 		metricsJSON, _ := json.Marshal(metricsList)
 		autoRefresh := r.URL.Query().Get("autoRefresh")
@@ -1306,11 +1300,7 @@ func runDashboard() {
 			sel30 = "selected"
 		}
 		agg := aggregateMetrics()
-		var extended []ExtendedMetrics
-		for _, m := range metricsList {
-			extended = append(extended, m.extend())
-		}
-		extendedJSON, err := json.Marshal(extended)
+		extendedJSON, err := json.Marshal(extendedList)
 		if err != nil {
 			pterm.Error.Printf("Error marshaling extended metrics: %v\n", err)
 		}
@@ -1344,7 +1334,7 @@ func runDashboard() {
 			AutoRefreshEnabled:      autoRefresh == "true",
 			RefreshPeriod:           refreshPeriod,
 			MetricsJSON:             string(metricsJSON),
-			ExtendedMetricsList:     extended,
+			ExtendedMetricsList:     extendedList,
 			ExtendedJSON:            string(extendedJSON),
 			Version:                 version, // Holds the value of the const `version`
 		}
@@ -1382,8 +1372,48 @@ type Metrics struct {
 
 type ExtendedMetrics struct {
 	Metrics
-	Status   string `json:"status"`
-	TimeLeft int64  `json:"timeLeft"`
+	Status    string `json:"status"`
+	TimeLeft  int64  `json:"timeLeft"`
+	IsRunning bool   `json:"isRunning"`
+}
+
+func isProcessRunning(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	if runtime.GOOS == "windows" {
+		cmd := exec.Command("tasklist", "/FI", fmt.Sprintf("PID eq %d", pid))
+		output, err := cmd.Output()
+		if err != nil {
+			pterm.Warning.Printf("Failed to query tasklist for pid %d: %v\n", pid, err)
+			return true
+		}
+		return bytes.Contains(output, []byte(fmt.Sprintf("%d", pid)))
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	if err := proc.Signal(syscall.Signal(0)); err != nil {
+		return false
+	}
+	return true
+}
+
+func shouldCleanupMetric(m ExtendedMetrics) bool {
+	return !m.IsRunning
+}
+
+func cleanupProcessArtifacts(pid int, metricsFile string) {
+	if metricsFile != "" {
+		if err := os.Remove(metricsFile); err != nil && !os.IsNotExist(err) {
+			pterm.Warning.Printf("Failed to remove stale metrics file %s for pid %d: %v\n", metricsFile, pid, err)
+		}
+	}
+	logFilePath := filepath.Join("logs", fmt.Sprintf("logs_%d.json", pid))
+	if err := os.Remove(logFilePath); err != nil && !os.IsNotExist(err) {
+		pterm.Warning.Printf("Failed to remove stale log file %s for pid %d: %v\n", logFilePath, pid, err)
+	}
 }
 
 func updateMetricsFile() {
@@ -1469,15 +1499,20 @@ func aggregateMetrics() Metrics {
 			pterm.Warning.Printf("Unmarshaling file %s failed: %v\n", f, err)
 			continue
 		}
-		agg.TotalWorkflowsStarted += m.TotalWorkflowsStarted
-		agg.TotalWorkflowsCompleted += m.TotalWorkflowsCompleted
-		agg.TotalWorkflowsFailed += m.TotalWorkflowsFailed
-		agg.ActiveWorkflows += m.ActiveWorkflows
-		agg.Durations = append(agg.Durations, m.Durations...)
-		agg.CPUUsage = append(agg.CPUUsage, m.CPUUsage...)
-		agg.MemoryUsage = append(agg.MemoryUsage, m.MemoryUsage...)
-		agg.RuntimeDuration = m.RuntimeDuration // Keep last or overwrite
-		agg.StartTimestamp = m.StartTimestamp
+		extendedMetric := m.extend()
+		if shouldCleanupMetric(extendedMetric) {
+			cleanupProcessArtifacts(extendedMetric.PID, f)
+			continue
+		}
+		agg.TotalWorkflowsStarted += extendedMetric.TotalWorkflowsStarted
+		agg.TotalWorkflowsCompleted += extendedMetric.TotalWorkflowsCompleted
+		agg.TotalWorkflowsFailed += extendedMetric.TotalWorkflowsFailed
+		agg.ActiveWorkflows += extendedMetric.ActiveWorkflows
+		agg.Durations = append(agg.Durations, extendedMetric.Durations...)
+		agg.CPUUsage = append(agg.CPUUsage, extendedMetric.CPUUsage...)
+		agg.MemoryUsage = append(agg.MemoryUsage, extendedMetric.MemoryUsage...)
+		agg.RuntimeDuration = extendedMetric.RuntimeDuration // Keep last or overwrite
+		agg.StartTimestamp = extendedMetric.StartTimestamp
 	}
 	return agg
 }
@@ -1489,32 +1524,19 @@ func (m Metrics) extend() ExtendedMetrics {
 		timeLeft = 0
 	}
 	status := "Running" // Default status for missing or incomplete metrics
-	if m.ActiveWorkflows > 0 && timeLeft > 0 {
-		status = "Running"
-	}
-	// Check if the process with PID exists; if not, mark as "Killed"
-	if timeLeft == 0 && (m.Params != "" && !strings.Contains(m.Params, "-runApp")) {
+	isRunning := isProcessRunning(m.PID)
+	if m.RuntimeDuration > 0 && timeLeft == 0 && (m.Params != "" && !strings.Contains(m.Params, "-runApp")) {
 		status = "Ended"
 	}
-	proc, _ := os.FindProcess(m.PID)
-	if runtime.GOOS == "windows" {
-		// Use tasklist to check if the process is running
-		cmd := exec.Command("tasklist", "/FI", fmt.Sprintf("PID eq %d", m.PID))
-		output, err := cmd.Output()
-		if err != nil || !strings.Contains(string(output), fmt.Sprintf("%d", m.PID)) {
-			status = "Killed"
-		}
-	} else {
-		// Sending signal 0 does not kill the process but can be used to check for its existence.
-		if err := proc.Signal(syscall.Signal(0)); err != nil {
-			status = "Killed"
-		}
+	if !isRunning {
+		status = "Killed"
 	}
 
 	return ExtendedMetrics{
-		Metrics:  m,
-		Status:   status,
-		TimeLeft: timeLeft,
+		Metrics:   m,
+		Status:    status,
+		TimeLeft:  timeLeft,
+		IsRunning: isRunning,
 	}
 }
 
@@ -1554,6 +1576,12 @@ func setupConsoleHandler() {
 			logFilePath := filepath.Join("logs", fmt.Sprintf("logs_%s.json", pidFilter))
 			file, err := os.Open(logFilePath)
 			if err != nil {
+				if os.IsNotExist(err) {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusOK)
+					json.NewEncoder(w).Encode([]LogEntry{})
+					return
+				}
 				pterm.Warning.Printf("Log file opening failed for PID %s: %v\n", pidFilter, err)
 				http.Error(w, "Error opening log file", http.StatusInternalServerError)
 				return
@@ -1614,6 +1642,11 @@ func setupTerminalConsoleHandler() {
 			logFilePath := filepath.Join("logs", fmt.Sprintf("logs_%s.json", pidFilter))
 			file, err := os.Open(logFilePath)
 			if err != nil {
+				if os.IsNotExist(err) {
+					w.Header().Set("Content-Type", "text/plain")
+					w.WriteHeader(http.StatusOK)
+					return
+				}
 				pterm.Warning.Printf("Log file opening failed for PID %s: %v\n", pidFilter, err)
 				http.Error(w, "Error opening log file", http.StatusInternalServerError)
 				return
