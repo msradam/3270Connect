@@ -1,26 +1,55 @@
 site_name: 3270Connect
 site_description: User Guide for the 3270Connect Command-Line Utility
 site_author: 3270.io
-copyright: "© 2023-2025 3270.io"
+copyright: "© 2023–2025 3270.io"
 site_url: https://3270.io
 repo_url: https://github.com/3270io/3270Connect
+repo_name: GitHub
 edit_uri: edit/main/docs/
-
-# Directory for MkDocs output (GitHub Pages uses `gh-pages` branch)
 site_dir: site
 
 theme:
   name: material
-  logo: logo.png  # Ensure this file exists in `docs/assets/`
-  palette:
-    primary: teal
+  language: en
+  logo: logo.png       # move your logo to docs/assets/logo.png
+  favicon: favicon.png # optional favicon
+  icon:
+    repo: fontawesome/brands/github
   features:
+    # Navigation and structure
     - navigation.instant
     - navigation.instant.progress
-    - toc.integrate
     - navigation.expand
+    - navigation.sections
+    - navigation.tabs
     - navigation.top
     - navigation.footer
+    - header.autohide
+    # Search & content
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+    - content.action.view
+    - toc.integrate
+    - content.tabs.link
+    - content.footnotes
+  palette:
+    - scheme: default
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  font:
+    text: "Inter"
+    code: "JetBrains Mono"
 
 nav:
   - Home: index.md
@@ -29,6 +58,10 @@ nav:
   - Workflow Actions: workflow.md
   - Dynamic Field Injection: injection-config.md
   - Advanced Features: advanced-features.md
+  - Reference:
+      - Build Guide: BUILD.md
+      - Makefile Quick Reference: MAKEFILE_QUICKREF.md
+  - License: LICENSE.md
 
 plugins:
   - search
@@ -36,6 +69,8 @@ plugins:
       is_video: true
       video_autoplay: false
   - simple
+  - tags:
+      enabled: true
 
 markdown_extensions:
   - admonition
@@ -50,7 +85,10 @@ markdown_extensions:
   - pymdownx.caret
   - pymdownx.mark
   - pymdownx.tilde
-  - pymdownx.tasklist  # Removed invalid 'clickable' setting
+  - pymdownx.tasklist
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
   - attr_list
   - def_list
   - pymdownx.snippets:
@@ -60,6 +98,17 @@ markdown_extensions:
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - footnotes
 
+extra_css:
+  - stylesheets/extra.css
+
 extra:
   version: 1.5
-  CNAME: 3270.io  # Custom domain for GitHub Pages
+  CNAME: 3270.io
+  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/3270io
+    - icon: fontawesome/brands/linkedin
+      link: https://linkedin.com/company/3270io
+    - icon: fontawesome/brands/twitter
+      link: https://x.com/3270io

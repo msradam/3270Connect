@@ -12,11 +12,13 @@
         <meta name="author" content="3270.io">
       
       
-        <link rel="canonical" href="https://3270.io/LICENSE/">
+        <link rel="canonical" href="https://3270.io/MAKEFILE_QUICKREF/">
       
       
-        <link rel="prev" href="../MAKEFILE_QUICKREF/">
+        <link rel="prev" href="../BUILD/">
       
+      
+        <link rel="next" href="../LICENSE/">
       
       
       <link rel="icon" href="../favicon.png">
@@ -24,7 +26,7 @@
     
     
       
-        <title>License - 3270Connect</title>
+        <title>Makefile Quick Reference - 3270Connect</title>
       
     
     
@@ -77,6 +79,11 @@
     <label class="md-overlay" for="__drawer"></label>
     <div data-md-component="skip">
       
+        
+        <a href="#x3270-makefile-quick-reference" class="md-skip">
+          Skip to content
+        </a>
+      
     </div>
     <div data-md-component="announce">
       
@@ -110,7 +117,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              License
+              Makefile Quick Reference
             
           </span>
         </div>
@@ -335,10 +342,12 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
+      <li class="md-tabs__item md-tabs__item--active">
         <a href="../BUILD/" class="md-tabs__link">
           
   
@@ -355,11 +364,9 @@
   
   
   
-    
   
-  
-    <li class="md-tabs__item md-tabs__item--active">
-      <a href="./" class="md-tabs__link">
+    <li class="md-tabs__item">
+      <a href="../LICENSE/" class="md-tabs__link">
         
   
   
@@ -554,28 +561,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
         
           
-        
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
-        
-          
-          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
             
   
   
@@ -588,7 +598,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             Reference
@@ -622,10 +632,32 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../MAKEFILE_QUICKREF/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Makefile Quick Reference
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -636,6 +668,140 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      Quick Start
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#all-targets" class="md-nav__link">
+    <span class="md-ellipsis">
+      All Targets
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Configuration
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#output-directories" class="md-nav__link">
+    <span class="md-ellipsis">
+      Output Directories
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-tracking" class="md-nav__link">
+    <span class="md-ellipsis">
+      Version Tracking
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      Common Workflows
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Common Workflows">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#build-for-the-first-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      Build for the first time
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update-to-a-new-version" class="md-nav__link">
+    <span class="md-ellipsis">
+      Update to a new version
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rebuild-without-changing-version" class="md-nav__link">
+    <span class="md-ellipsis">
+      Rebuild without changing version
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#build-everything" class="md-nav__link">
+    <span class="md-ellipsis">
+      Build everything
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      Notes
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      See Also
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -652,17 +818,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../LICENSE/" class="md-nav__link">
         
   
   
@@ -673,7 +832,6 @@
   
 
       </a>
-      
     </li>
   
 
@@ -694,25 +852,116 @@
 
 
 
-  <h1>License</h1>
+<div><h1 id="x3270-makefile-quick-reference">X3270 Makefile Quick Reference<a class="headerlink" href="#x3270-makefile-quick-reference" title="Permanent link">¶</a></h1>
+<h2 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code><span class="c1"># Build Linux binaries (recommended)</span>
+make<span class="w"> </span>linux-only
 
-<div><p>MIT License</p>
-<p>Copyright (c) 2023 Paul Jennings</p>
-<p>Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:</p>
-<p>The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.</p>
-<p>THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.</p></div>
+<span class="c1"># Show all available targets</span>
+make<span class="w"> </span><span class="nb">help</span>
+
+<span class="c1"># Clean and rebuild</span>
+make<span class="w"> </span>clean<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>make<span class="w"> </span>linux-only
+</code></pre></div>
+<h2 id="all-targets">All Targets<a class="headerlink" href="#all-targets" title="Permanent link">¶</a></h2>
+<table>
+<thead>
+<tr>
+<th>Target</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>all</code></td>
+<td>Build all binaries for Linux and Windows (default)</td>
+</tr>
+<tr>
+<td><code>linux-only</code></td>
+<td>Build and test only Linux binaries (recommended)</td>
+</tr>
+<tr>
+<td><code>linux</code></td>
+<td>Build Linux binaries only</td>
+</tr>
+<tr>
+<td><code>windows</code></td>
+<td>Build Windows binaries only</td>
+</tr>
+<tr>
+<td><code>test-binaries</code></td>
+<td>Test built binaries</td>
+</tr>
+<tr>
+<td><code>force</code></td>
+<td>Force rebuild ignoring version tracking</td>
+</tr>
+<tr>
+<td><code>clean</code></td>
+<td>Remove built binaries (safe, preserves source)</td>
+</tr>
+<tr>
+<td><code>deepclean</code></td>
+<td>Remove everything including cloned x3270 source</td>
+</tr>
+<tr>
+<td><code>help</code></td>
+<td>Show help message</td>
+</tr>
+</tbody>
+</table>
+<h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code><span class="c1"># Use a different version</span>
+make<span class="w"> </span><span class="nv">X3270_VERSION</span><span class="o">=</span><span class="m">4</span>.3ga10<span class="w"> </span>linux-only
+
+<span class="c1"># Check current version</span>
+make<span class="w"> </span><span class="nb">help</span>
+</code></pre></div>
+<h2 id="output-directories">Output Directories<a class="headerlink" href="#output-directories" title="Permanent link">¶</a></h2>
+<ul>
+<li><strong>Linux binaries:</strong> <code>binaries/linux/</code></li>
+<li>s3270</li>
+<li>
+<p>x3270if</p>
+</li>
+<li>
+<p><strong>Windows binaries:</strong> <code>binaries/windows/</code></p>
+</li>
+<li>s3270.exe</li>
+<li>x3270if.exe</li>
+<li>ws3270.exe</li>
+<li>wc3270.exe</li>
+</ul>
+<h2 id="version-tracking">Version Tracking<a class="headerlink" href="#version-tracking" title="Permanent link">¶</a></h2>
+<p>The Makefile tracks the last built version in <code>.x3270_version</code>:
+- Prevents redundant builds
+- Use <code>make force</code> to rebuild the same version
+- Use <code>make deepclean</code> for complete reset</p>
+<h2 id="common-workflows">Common Workflows<a class="headerlink" href="#common-workflows" title="Permanent link">¶</a></h2>
+<h3 id="build-for-the-first-time">Build for the first time<a class="headerlink" href="#build-for-the-first-time" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code>make<span class="w"> </span>linux-only
+</code></pre></div>
+<h3 id="update-to-a-new-version">Update to a new version<a class="headerlink" href="#update-to-a-new-version" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code>make<span class="w"> </span><span class="nv">X3270_VERSION</span><span class="o">=</span><span class="m">4</span>.4ga7<span class="w"> </span>deepclean<span class="w"> </span>linux-only
+</code></pre></div>
+<h3 id="rebuild-without-changing-version">Rebuild without changing version<a class="headerlink" href="#rebuild-without-changing-version" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code>make<span class="w"> </span>force
+</code></pre></div>
+<h3 id="build-everything">Build everything<a class="headerlink" href="#build-everything" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code>make<span class="w"> </span>all
+</code></pre></div>
+<h2 id="notes">Notes<a class="headerlink" href="#notes" title="Permanent link">¶</a></h2>
+<ul>
+<li><strong>Windows builds may fail</strong> due to MinGW dependencies</li>
+<li>Use <code>linux-only</code> for most reliable results</li>
+<li>Build directory: <code>/tmp/x3270-build</code></li>
+<li>Version file: <code>.x3270_version</code> (gitignored)</li>
+</ul>
+<h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">¶</a></h2>
+<ul>
+<li><a href="../MAKEFILE_README/">MAKEFILE_README.md</a> - Full documentation</li>
+<li><a href="https://github.com/pmattes/x3270">x3270 GitHub</a> - Upstream project</li>
+</ul></div>
 
 
 
@@ -750,7 +999,7 @@ SOFTWARE.</p></div>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../MAKEFILE_QUICKREF/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Makefile Quick Reference">
+          <a href="../BUILD/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Build Guide">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -760,11 +1009,27 @@ SOFTWARE.</p></div>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Makefile Quick Reference
+                Build Guide
               </div>
             </div>
           </a>
         
+        
+          
+          <a href="../LICENSE/" class="md-footer__link md-footer__link--next" aria-label="Next: License">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                License
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
         
       </nav>
     

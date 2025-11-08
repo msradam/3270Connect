@@ -6,7 +6,7 @@
 
 ## Introduction
 
-3270Connect is a robust command-line utility designed specifically for enhancing productivity and efficiency in managing and automating interactions with mainframe 3270 applications. It acts as a bridge between modern computing environments and the traditional mainframe terminals, providing a suite of tools that facilitate automated tasks and workflows in a terminal session.
+3270Connect is a robust automation toolkit that pairs a powerful command-line utility with a browser-based web console for enhancing productivity and efficiency in managing and automating interactions with mainframe 3270 applications. It acts as a bridge between modern computing environments and the traditional mainframe terminals, providing a suite of tools that facilitate automated tasks and workflows in a terminal session.
 
 The utility is used by system administrators, developers, and testers who frequently interact with mainframe systems, which are still pivotal in various industries such as banking, insurance, and government services. With 3270Connect, users can script complex sequences of tasks, automate data entry, perform complex online operations, and capture terminal screens for logging or debugging purposes.
 
@@ -28,8 +28,10 @@ Through these features, 3270Connect empowers organizations to integrate their le
 Here are the key features of 3270Connect:
 
 - Running workflows defined in a configuration file.
+- Command-line interface for scripting and running automation from the terminal.
 - Capturing the 3270 screens as the workflow executes.
 - Running workflows concurrently with options for controlling the number of concurrent workflows and runtime duration.
+- Dashboard and web console to visually provide metrics on concurrency usage and manage runs.
 - Headless mode for running workflows without a graphical user interface.
 - Verbose mode for detailed output.
 - API mode for advanced automation.
