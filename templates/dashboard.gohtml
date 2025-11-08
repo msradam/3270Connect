@@ -70,9 +70,11 @@
 
     /* CRT Screen Effect */
     .crt-screen {
-      background: 
-        linear-gradient(transparent 0%, rgba(0, 255, 128, 0.03) 50%, transparent 100%),
-        radial-gradient(ellipse at center, rgba(0, 255, 128, 0.1) 0%, transparent 70%);
+      background:
+        linear-gradient(180deg, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.75)),
+        radial-gradient(ellipse at center, rgba(0, 255, 128, 0.08) 0%, transparent 65%),
+        linear-gradient(transparent 0%, rgba(0, 255, 128, 0.04) 50%, transparent 100%),
+        var(--card);
       position: relative;
     }
 
@@ -88,8 +90,8 @@
           0deg,
           transparent,
           transparent 2px,
-          rgba(0, 255, 128, 0.03) 2px,
-          rgba(0, 255, 128, 0.03) 4px
+          rgba(0, 255, 128, 0.04) 2px,
+          rgba(0, 255, 128, 0.04) 4px
         );
       pointer-events: none;
       z-index: 1;
@@ -651,23 +653,23 @@
 
     /* Maximized modal styles */
     .modal-maximized {
-      max-width: 100vw !important;
-      margin: 0 !important;
-      height: 100vh;
+      max-width: calc(100vw - 32px) !important;
+      margin: 16px auto !important;
+      height: calc(100vh - 32px);
     }
 
     .modal-maximized .modal-content {
-      height: 100vh;
-      border-radius: 0;
+      height: 100%;
+      border-radius: var(--radius);
     }
 
     .modal-maximized .modal-body {
-      max-height: calc(100vh - 180px);
+      max-height: calc(100vh - 212px);
       overflow-y: auto;
     }
 
     .modal-maximized #logsContainer {
-      max-height: calc(100vh - 450px) !important;
+      max-height: calc(100vh - 482px) !important;
     }
 
     /* Table dark styling for logs */
@@ -1032,13 +1034,18 @@
       'rgba(255, 206, 86, 1)'    // Yellow
     ];
     
-    // Function to prepare datasets with limited data points
-    function prepareDurationDatasets(dataPointLimit) {
+    // Build trimmed duration chart data so only active samples remain visible
+    function buildDurationData(dataPointLimit) {
+      var limitedLabels = labels.slice(-dataPointLimit);
       var datasets = [];
+      var firstDataIndex = limitedLabels.length;
+
       metricsData.forEach(function(metric, index) {
-        var fullData = new Array(maxCount - metric.durations.length).fill(null).concat(metric.durations);
+        var durations = metric.durations || [];
+        var padding = Math.max(maxCount - durations.length, 0);
+        var fullData = new Array(padding).fill(null).concat(durations);
         var limitedData = fullData.slice(-dataPointLimit);
-        datasets.push({
+        var dataset = {
           label: "PID " + metric.pid,
           data: limitedData,
           borderColor: colors[index % colors.length],
@@ -1051,19 +1058,33 @@
           pointBackgroundColor: colors[index % colors.length],
           pointBorderColor: '#fff',
           pointBorderWidth: 2
-        });
+        };
+
+        var firstValueIndex = dataset.data.findIndex(function(value) { return value !== null && value !== undefined; });
+        if (firstValueIndex !== -1 && firstValueIndex < firstDataIndex) {
+          firstDataIndex = firstValueIndex;
+        }
+
+        datasets.push(dataset);
       });
-      return datasets;
-    }
-    
-    function prepareDurationLabels(dataPointLimit) {
-      return labels.slice(-dataPointLimit);
+
+      if (firstDataIndex > 0 && firstDataIndex < limitedLabels.length) {
+        limitedLabels = limitedLabels.slice(firstDataIndex);
+        datasets = datasets.map(function(dataset) {
+          return Object.assign({}, dataset, {
+            data: dataset.data.slice(firstDataIndex)
+          });
+        });
+      }
+
+      return { labels: limitedLabels, datasets: datasets };
     }
     
     var ctx1 = document.getElementById("durationChart").getContext("2d");
+    var durationInitialData = buildDurationData(30);
     var durationChart = new Chart(ctx1, {
       type: "line",
-      data: { labels: prepareDurationLabels(30), datasets: prepareDurationDatasets(30) },
+      data: durationInitialData,
       options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -1110,8 +1131,9 @@
     document.getElementById('durationDataPoints').addEventListener('input', function(e) {
       var dataPointLimit = parseInt(e.target.value);
       document.getElementById('durationDataPointsValue').textContent = dataPointLimit;
-      durationChart.data.labels = prepareDurationLabels(dataPointLimit);
-      durationChart.data.datasets = prepareDurationDatasets(dataPointLimit);
+      var updatedDuration = buildDurationData(dataPointLimit);
+      durationChart.data.labels = updatedDuration.labels;
+      durationChart.data.datasets = updatedDuration.datasets;
       durationChart.update();
     });
     var aggregatedCPU = [];
@@ -1135,12 +1157,12 @@
     var labels2 = [];
     for (var i = 0; i < maxLen; i++) { labels2.push(" " + (i + 1)); }
     
-    // Function to prepare resource datasets with limited data points
-    function prepareResourceDatasets(dataPointLimit) {
-      var fullCpuData = new Array(maxLen - aggregatedCPU.length).fill(null).concat(aggregatedCPU);
-      var fullMemData = new Array(maxLen - hostMemory.length).fill(null).concat(hostMemory);
-      
-      return [{
+    function buildResourceData(dataPointLimit) {
+      var limitedLabels = labels2.slice(-dataPointLimit);
+      var fullCpuData = new Array(Math.max(maxLen - aggregatedCPU.length, 0)).fill(null).concat(aggregatedCPU);
+      var fullMemData = new Array(Math.max(maxLen - hostMemory.length, 0)).fill(null).concat(hostMemory);
+
+      var datasets = [{
         label: "CPU Usage (%)",
         data: fullCpuData.slice(-dataPointLimit),
         borderColor: "rgba(102, 126, 234, 1)",
@@ -1153,8 +1175,7 @@
         pointBackgroundColor: "rgba(102, 126, 234, 1)",
         pointBorderColor: '#fff',
         pointBorderWidth: 2
-      },
-      {
+      }, {
         label: "Memory Usage (%)",
         data: fullMemData.slice(-dataPointLimit),
         borderColor: "rgba(245, 87, 108, 1)",
@@ -1168,16 +1189,32 @@
         pointBorderColor: '#fff',
         pointBorderWidth: 2
       }];
-    }
-    
-    function prepareResourceLabels(dataPointLimit) {
-      return labels2.slice(-dataPointLimit);
+
+      var firstDataIndex = limitedLabels.length;
+      datasets.forEach(function(dataset) {
+        var firstValueIndex = dataset.data.findIndex(function(value) { return value !== null && value !== undefined; });
+        if (firstValueIndex !== -1 && firstValueIndex < firstDataIndex) {
+          firstDataIndex = firstValueIndex;
+        }
+      });
+
+      if (firstDataIndex > 0 && firstDataIndex < limitedLabels.length) {
+        limitedLabels = limitedLabels.slice(firstDataIndex);
+        datasets = datasets.map(function(dataset) {
+          return Object.assign({}, dataset, {
+            data: dataset.data.slice(firstDataIndex)
+          });
+        });
+      }
+
+      return { labels: limitedLabels, datasets: datasets };
     }
     
     var ctx2 = document.getElementById("cpuMemChart").getContext("2d");
+    var resourceInitialData = buildResourceData(30);
     var cpuMemChart = new Chart(ctx2, {
       type: "line",
-      data: { labels: prepareResourceLabels(30), datasets: prepareResourceDatasets(30) },
+      data: resourceInitialData,
       options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -1231,8 +1268,9 @@
     document.getElementById('resourcesDataPoints').addEventListener('input', function(e) {
       var dataPointLimit = parseInt(e.target.value);
       document.getElementById('resourcesDataPointsValue').textContent = dataPointLimit;
-      cpuMemChart.data.labels = prepareResourceLabels(dataPointLimit);
-      cpuMemChart.data.datasets = prepareResourceDatasets(dataPointLimit);
+      var updatedResource = buildResourceData(dataPointLimit);
+      cpuMemChart.data.labels = updatedResource.labels;
+      cpuMemChart.data.datasets = updatedResource.datasets;
       cpuMemChart.update();
     });
     var pidSelect = document.getElementById("pidFilter");

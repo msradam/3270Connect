@@ -114,9 +114,11 @@ Creates an authentic cathode ray tube screen appearance:
 
 ```css
 .crt-screen {
-  background: 
-    linear-gradient(transparent 0%, rgba(0, 255, 128, 0.03) 50%, transparent 100%),
-    radial-gradient(ellipse at center, rgba(0, 255, 128, 0.1) 0%, transparent 70%);
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.75)),
+    radial-gradient(ellipse at center, rgba(0, 255, 128, 0.08) 0%, transparent 65%),
+    linear-gradient(transparent 0%, rgba(0, 255, 128, 0.04) 50%, transparent 100%),
+    var(--card);
   position: relative;
 }
 
@@ -132,10 +134,11 @@ Creates an authentic cathode ray tube screen appearance:
       0deg,
       transparent,
       transparent 2px,
-      rgba(0, 255, 128, 0.03) 2px,
-      rgba(0, 255, 128, 0.03) 4px
+      rgba(0, 255, 128, 0.04) 2px,
+      rgba(0, 255, 128, 0.04) 4px
     );
   pointer-events: none;
+  z-index: 1;
 }
 ```
 
