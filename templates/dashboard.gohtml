@@ -1027,25 +1027,27 @@
       margin-bottom: 0;
     }
 
-    #consoleModalDialog {
+    #consoleModal .modal-dialog {
       width: 100%;
       max-width: min(960px, 95vw);
       margin: 16px auto;
-      max-height: calc(100vh - 48px);
+      height: calc(100vh - 32px);
       display: flex;
-      flex-direction: column;
     }
 
-    #consoleModalDialog .modal-content {
+    #consoleModal .modal-content {
       flex: 1;
+      display: flex;
+      flex-direction: column;
       max-height: 100%;
-      display: flex;
-      flex-direction: column;
     }
 
-    #consoleModalDialog .modal-body {
+    #consoleModal .modal-body {
       flex: 1;
+      display: flex;
+      flex-direction: column;
       overflow: hidden;
+      gap: 16px;
     }
 
     #pidParamsContainer {
@@ -1078,6 +1080,15 @@
       flex: 1 1 220px;
     }
 
+    .pid-param-row .pid-label,
+    .pid-param-row .param-label {
+      font-weight: 600;
+      opacity: 0.75;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-size: 0.65rem;
+    }
+
     .pid-param-row .pid-value,
     .pid-param-row .param-text {
       font-weight: 600;
@@ -1087,6 +1098,7 @@
     .pid-param-row .param-text {
       word-break: break-word;
       overflow-wrap: anywhere;
+      line-height: 1.35;
     }
 
     /* Toast Notification */
@@ -2011,8 +2023,8 @@
             const paramString = entries.length ? entries.join(", ") : "-";
             return `
               <div class="pid-param-row">
-                <span class="badge bg-dark pid-badge">PID <span class="pid-value">${pidValue}</span></span>
-                <span class="badge bg-secondary param-badge">Params <span class="param-text">${paramString}</span></span>
+                <span class="badge bg-dark text-light pid-badge"><span class="pid-label">PID</span><span class="pid-value">${pidValue}</span></span>
+                <span class="badge bg-secondary text-dark param-badge"><span class="param-label">Parameters</span><span class="param-text">${paramString}</span></span>
               </div>`;
           };
 
