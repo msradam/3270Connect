@@ -1000,6 +1000,7 @@
       flex-direction: column;
       gap: 16px;
       height: 100%;
+      min-height: 0;
     }
 
     .logs-modal .logs-wrapper {
@@ -1007,6 +1008,7 @@
       flex-direction: column;
       gap: 16px;
       flex: 1;
+      min-height: 0;
     }
 
     .logs-modal .settings-card {
@@ -1016,6 +1018,7 @@
 
     .logs-modal #logsContainer {
       flex: 1;
+      min-height: 0;
       max-height: none;
       overflow-y: auto;
     }
@@ -1025,21 +1028,65 @@
     }
 
     #consoleModalDialog {
+      width: 100%;
       max-width: min(960px, 95vw);
-      height: calc(100vh - 48px);
+      margin: 16px auto;
+      max-height: calc(100vh - 48px);
       display: flex;
       flex-direction: column;
     }
 
     #consoleModalDialog .modal-content {
+      flex: 1;
+      max-height: 100%;
       display: flex;
       flex-direction: column;
-      flex: 1;
     }
 
     #consoleModalDialog .modal-body {
       flex: 1;
       overflow: hidden;
+    }
+
+    #pidParamsContainer {
+      max-height: 180px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .pid-param-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: flex-start;
+    }
+
+    .pid-param-row .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: normal;
+    }
+
+    .pid-param-row .pid-badge {
+      flex: 0 0 auto;
+    }
+
+    .pid-param-row .param-badge {
+      flex: 1 1 220px;
+    }
+
+    .pid-param-row .pid-value,
+    .pid-param-row .param-text {
+      font-weight: 600;
+      color: inherit;
+    }
+
+    .pid-param-row .param-text {
+      word-break: break-word;
+      overflow-wrap: anywhere;
     }
 
     /* Toast Notification */
@@ -1959,35 +2006,27 @@
           const containerParams = document.getElementById("pidParamsContainer");
           containerParams.innerHTML = "";
 
+          const renderParamsRow = function(pidValue, paramsSet) {
+            const entries = Array.from(paramsSet || []);
+            const paramString = entries.length ? entries.join(", ") : "-";
+            return `
+              <div class="pid-param-row">
+                <span class="badge bg-dark pid-badge">PID <span class="pid-value">${pidValue}</span></span>
+                <span class="badge bg-secondary param-badge">Params <span class="param-text">${paramString}</span></span>
+              </div>`;
+          };
+
           let selectedPid = document.getElementById("pidFilter").value;
           if (!selectedPid) {
             // Show params for all PIDs
             for (const [pid, paramsSet] of Object.entries(pidParamsMap)) {
-              let paramString = Array.from(paramsSet).join(", ");
-              containerParams.innerHTML += `
-                <h5>
-                  <span class="badge bg-dark">
-                    PID: <span class="badge bg-light" style="color: black;">${pid}</span>
-                  </span>
-                  <span class="badge bg-secondary" style="flex:1;">
-                    Params: <span class="badge bg-light" style="color: black;">${paramString}</span>
-                  </span>
-                </h5>`;
+              containerParams.innerHTML += renderParamsRow(pid, paramsSet);
             }
           } else {
             // Show params only for the selected PID
             let paramsSet = pidParamsMap[selectedPid];
             if (paramsSet) {
-              let paramString = Array.from(paramsSet).join(", ");
-              containerParams.innerHTML += `
-                <h5>
-                  <span class="badge bg-dark">
-                    PID: <span class="badge bg-light" style="color: black;">${selectedPid}</span>
-                  </span>
-                  <span class="badge bg-secondary" style="flex:1;">
-                    Params: <span class="badge bg-light" style="color: black;">${paramString}</span>
-                  </span>
-                </h5>`;
+              containerParams.innerHTML = renderParamsRow(selectedPid, paramsSet);
             } else {
               containerParams.innerHTML = `<p>No logs found for PID ${selectedPid}.</p>`;
             }
