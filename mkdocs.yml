@@ -7,6 +7,7 @@ repo_url: https://github.com/3270io/3270Connect
 repo_name: GitHub
 edit_uri: edit/main/docs/
 site_dir: site
+docs_dir: docs
 
 theme:
   name: material
@@ -52,7 +53,7 @@ theme:
     code: "JetBrains Mono"
 
 nav:
-  - Home: home.md
+  - Home: index.md
   - Installation: installation.md
   - Basic Usage: basic-usage.md
   - Workflow Actions: workflow.md
