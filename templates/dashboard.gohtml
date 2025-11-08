@@ -16,12 +16,426 @@
   <script src="https://unpkg.com/@popperjs/core@2"></script>
   <script src="https://unpkg.com/tippy.js@6"></script>
   <style>
-    body { padding-top: 70px; padding-bottom: 70px; color: black; }
-    .chart-container { margin: auto; height: 400px; width: 600px; }
-    
+    :root {
+      --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      --success-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+      --info-gradient: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+      --warning-gradient: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+      --dark-bg: #1a1a2e;
+      --card-bg: #ffffff;
+      --text-primary: #2d3748;
+      --text-secondary: #718096;
+      --border-radius: 16px;
+      --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
+      --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.12);
+      --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.16);
+    }
+
+    body { 
+      padding-top: 70px; 
+      padding-bottom: 70px; 
+      background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      color: var(--text-primary);
+    }
+
+    /* Modern Navbar */
+    .navbar {
+      background: var(--primary-gradient) !important;
+      box-shadow: var(--shadow-md);
+      backdrop-filter: blur(10px);
+      transition: all 0.3s ease;
+    }
+
+    .navbar-brand {
+      font-weight: 700;
+      font-size: 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      transition: transform 0.3s ease;
+    }
+
+    .navbar-brand:hover {
+      transform: scale(1.05);
+    }
+
+    .navbar-brand img {
+      border-radius: 8px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* Modern Buttons */
+    .btn {
+      border-radius: 12px;
+      padding: 10px 24px;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      border: none;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .btn-primary {
+      background: var(--primary-gradient);
+      color: white;
+    }
+
+    .btn-success {
+      background: var(--success-gradient);
+      color: white;
+    }
+
+    .btn-secondary {
+      background: linear-gradient(135deg, #868f96 0%, #596164 100%);
+      color: white;
+    }
+
+    .btn-light {
+      background: white;
+      color: var(--text-primary);
+    }
+
+    .btn-danger {
+      background: var(--secondary-gradient);
+      color: white;
+    }
+
+    /* Hero Section with Gradient */
+    .hero-section {
+      background: var(--card-bg);
+      border-radius: var(--border-radius);
+      box-shadow: var(--shadow-lg);
+      padding: 40px;
+      margin-bottom: 32px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-section::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 6px;
+      background: var(--primary-gradient);
+    }
+
+    .hero-section h1 {
+      background: var(--primary-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+
+    .hero-section .subtitle {
+      color: var(--text-secondary);
+      font-size: 1.1rem;
+      font-weight: 500;
+    }
+
+    /* Modern Metric Cards */
+    .metric-card {
+      background: var(--card-bg);
+      border-radius: var(--border-radius);
+      padding: 24px;
+      margin: 12px;
+      box-shadow: var(--shadow-sm);
+      transition: all 0.3s ease;
+      border-left: 4px solid transparent;
+      min-width: 200px;
+    }
+
+    .metric-card:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .metric-card.active {
+      border-left-color: #667eea;
+    }
+
+    .metric-card.started {
+      border-left-color: #4facfe;
+    }
+
+    .metric-card.completed {
+      border-left-color: #43e97b;
+    }
+
+    .metric-card.failed {
+      border-left-color: #f5576c;
+    }
+
+    .metric-card h5 {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 12px;
+    }
+
+    .metric-card .metric-value {
+      font-size: 2.5rem;
+      font-weight: 800;
+      background: var(--primary-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin: 0;
+    }
+
+    .metric-card .metric-icon {
+      font-size: 2rem;
+      opacity: 0.2;
+      position: absolute;
+      right: 24px;
+      top: 24px;
+    }
+
+    /* Chart Container */
+    .chart-wrapper {
+      background: var(--card-bg);
+      border-radius: var(--border-radius);
+      padding: 24px;
+      box-shadow: var(--shadow-md);
+      margin-bottom: 24px;
+      transition: all 0.3s ease;
+    }
+
+    .chart-wrapper:hover {
+      box-shadow: var(--shadow-lg);
+    }
+
+    .chart-wrapper h3 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid #f0f0f0;
+    }
+
+    .chart-container { 
+      margin: auto; 
+      height: 400px; 
+      position: relative;
+    }
+
+    /* Modern Table Styling */
+    .table-wrapper {
+      background: var(--card-bg);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+      box-shadow: var(--shadow-md);
+      margin-top: 24px;
+    }
+
+    .table {
+      margin-bottom: 0;
+    }
+
+    .table thead {
+      background: var(--primary-gradient);
+      color: white;
+    }
+
+    .table thead th {
+      border: none;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-size: 0.85rem;
+      padding: 16px;
+    }
+
+    .table tbody tr {
+      transition: all 0.2s ease;
+    }
+
+    .table tbody tr:hover {
+      background-color: #f8f9fa;
+      transform: scale(1.01);
+    }
+
+    .table tbody td {
+      padding: 16px;
+      vertical-align: middle;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    /* Action Icons */
+    .action-icon {
+      font-size: 1.2rem;
+      cursor: pointer;
+      margin: 0 6px;
+      transition: all 0.2s ease;
+    }
+
+    .action-icon:hover {
+      transform: scale(1.2);
+    }
+
+    .action-icon.logs {
+      color: #4facfe;
+    }
+
+    .action-icon.kill {
+      color: #f5576c;
+    }
+
+    /* Modern Form Controls */
+    .form-control, .form-select {
+      border-radius: 10px;
+      border: 2px solid #e2e8f0;
+      padding: 10px 16px;
+      transition: all 0.3s ease;
+    }
+
+    .form-control:focus, .form-select:focus {
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .form-check-input:checked {
+      background-color: #667eea;
+      border-color: #667eea;
+    }
+
+    .form-label {
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    /* Modern Modal */
+    .modal-content {
+      border-radius: var(--border-radius);
+      border: none;
+      box-shadow: var(--shadow-lg);
+    }
+
+    .modal-header {
+      background: var(--primary-gradient);
+      color: white;
+      border-radius: var(--border-radius) var(--border-radius) 0 0;
+      border-bottom: none;
+      padding: 20px 24px;
+    }
+
+    .modal-title {
+      font-weight: 700;
+    }
+
+    .modal-body {
+      padding: 24px;
+    }
+
+    .modal-footer {
+      border-top: 1px solid #f0f0f0;
+      padding: 20px 24px;
+    }
+
+    .btn-close {
+      filter: brightness(0) invert(1);
+    }
+
+    /* Footer */
+    footer {
+      background: var(--dark-bg) !important;
+      box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Auto Refresh Toggle */
+    .settings-card {
+      background: var(--card-bg);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: var(--shadow-sm);
+      margin-top: 24px;
+    }
+
+    .form-check-input {
+      cursor: pointer;
+      width: 48px;
+      height: 24px;
+    }
+
+    /* Toast Notification */
     #toast-container.toast-top-right {
-      top: 60px !important;  /* Push notifications down by 60px */
-      right: 20px; /* Keep it aligned to the right */
+      top: 80px !important;
+      right: 20px;
+    }
+
+    .toast {
+      border-radius: 12px;
+      box-shadow: var(--shadow-lg);
+    }
+
+    /* Logs Container */
+    #logsContainer {
+      background: #1a1a2e !important;
+      border-radius: 12px;
+      font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    }
+
+    /* Badge Styling */
+    .badge {
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-weight: 600;
+    }
+
+    /* Animations */
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .metric-card, .chart-wrapper, .table-wrapper {
+      animation: fadeInUp 0.5s ease-out;
+    }
+
+    /* Loading State */
+    .chart-container.loading::after {
+      content: 'Loading...';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    /* Responsive Improvements */
+    @media (max-width: 768px) {
+      .hero-section {
+        padding: 24px;
+      }
+
+      .metric-card {
+        margin: 8px 0;
+        min-width: 100%;
+      }
+
+      .chart-container {
+        height: 300px;
+      }
     }
   </style>
 </head>
@@ -52,70 +466,91 @@
     </div>
   </nav>
   <div class="container my-4">
-    <div class="p-5 mb-4 bg-light rounded-3">
-      <div class="container-fluid py-3">
-        <h1 class="display-5 fw-bold" data-tippy-content="This section displays aggregated metrics for all workflows.">3270Connect Aggregated Metrics</h1>
-        <p class="col-md-8 fs-4" data-tippy-content="Metrics are grouped by Process ID (PID).">Per PID Metrics</p>
-        <div class="d-flex flex-wrap justify-content-around">
-          <div class="p-2 text-center" data-tippy-content="Number of workflows currently running.">
+    <div class="hero-section">
+      <div class="container-fluid">
+        <h1 class="display-4" data-tippy-content="This section displays aggregated metrics for all workflows.">3270Connect Dashboard</h1>
+        <p class="subtitle" data-tippy-content="Metrics are grouped by Process ID (PID).">Real-time Workflow Monitoring & Management</p>
+        <div class="d-flex flex-wrap justify-content-around mt-4">
+          <div class="metric-card active" data-tippy-content="Number of workflows currently running.">
+            <i class="fas fa-spinner fa-spin metric-icon"></i>
             <h5>Active Workflows</h5>
-            <p class="mb-0">{{.ActiveWorkflows}}</p>
+            <p class="metric-value">{{.ActiveWorkflows}}</p>
           </div>
-          <div class="p-2 text-center" data-tippy-content="Total number of workflows that have been started.">
-            <h5>Total Workflows Started</h5>
-            <p class="mb-0">{{.TotalWorkflowsStarted}}</p>
+          <div class="metric-card started" data-tippy-content="Total number of workflows that have been started.">
+            <i class="fas fa-play-circle metric-icon"></i>
+            <h5>Total Started</h5>
+            <p class="metric-value">{{.TotalWorkflowsStarted}}</p>
           </div>
-          <div class="p-2 text-center" data-tippy-content="Total number of workflows that have completed successfully.">
-            <h5>Total Workflows Completed</h5>
-            <p class="mb-0">{{.TotalWorkflowsCompleted}}</p>
+          <div class="metric-card completed" data-tippy-content="Total number of workflows that have completed successfully.">
+            <i class="fas fa-check-circle metric-icon"></i>
+            <h5>Completed</h5>
+            <p class="metric-value">{{.TotalWorkflowsCompleted}}</p>
           </div>
-          <div class="p-2 text-center" data-tippy-content="Total number of workflows that have failed.">
-            <h5>Total Workflows Failed</h5>
-            <p class="mb-0">{{.TotalWorkflowsFailed}}</p>
+          <div class="metric-card failed" data-tippy-content="Total number of workflows that have failed.">
+            <i class="fas fa-times-circle metric-icon"></i>
+            <h5>Failed</h5>
+            <p class="metric-value">{{.TotalWorkflowsFailed}}</p>
           </div>
         </div>
-        <form id="autoRefreshForm" method="get" class="mt-3">
-          <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox" id="autoRefreshToggle" name="autoRefresh" value="true" {{.Checked}} onchange="handleAutoRefreshToggle()">
-            <label class="form-check-label" for="autoRefreshToggle">Auto Refresh</label>
-          </div>
-          <div class="mt-2">
-            <label for="refreshPeriodSelect" class="form-label">Refresh Period (seconds):</label>
-            <select class="form-select w-auto" id="refreshPeriodSelect" name="refreshPeriod" onchange="this.form.submit()">
-              <option value="1" {{.Sel1}}>1</option>
-              <option value="5" {{.Sel5}}>5</option>
-              <option value="10" {{.Sel10}}>10</option>
-              <option value="15" {{.Sel15}}>15</option>
-              <option value="30" {{.Sel30}}>30</option>
-            </select>
-          </div>
-        </form>
+        <div class="settings-card">
+          <form id="autoRefreshForm" method="get">
+            <div class="row align-items-center">
+              <div class="col-md-6">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="autoRefreshToggle" name="autoRefresh" value="true" {{.Checked}} onchange="this.form.submit()">
+                  <label class="form-check-label" for="autoRefreshToggle">Auto Refresh</label>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="d-flex align-items-center gap-2">
+                  <label for="refreshPeriodSelect" class="form-label mb-0">Refresh Period:</label>
+                  <select class="form-select w-auto" id="refreshPeriodSelect" name="refreshPeriod" onchange="this.form.submit()">
+                    <option value="1" {{.Sel1}}>1s</option>
+                    <option value="5" {{.Sel5}}>5s</option>
+                    <option value="10" {{.Sel10}}>10s</option>
+                    <option value="15" {{.Sel15}}>15s</option>
+                    <option value="30" {{.Sel30}}>30s</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
     <div class="row">
       <div class="col-md-6">
-        <div class="chart-container" data-tippy-content="This chart shows the duration of workflows over time.">
-          <canvas id="durationChart"></canvas>
+        <div class="chart-wrapper" data-tippy-content="This chart shows the duration of workflows over time.">
+          <h3><i class="fas fa-clock"></i> Workflow Duration</h3>
+          <div class="chart-container">
+            <canvas id="durationChart"></canvas>
+          </div>
         </div>
       </div>
       <div class="col-md-6">
-        <div class="chart-container" data-tippy-content="This chart shows CPU and memory usage over time.">
-          <canvas id="cpuMemChart"></canvas>
+        <div class="chart-wrapper" data-tippy-content="This chart shows CPU and memory usage over time.">
+          <h3><i class="fas fa-chart-line"></i> System Resources</h3>
+          <div class="chart-container">
+            <canvas id="cpuMemChart"></canvas>
+          </div>
         </div>
       </div>
     </div>
     <div class="row mt-3">
-      <div class="col-md-12" id="pidParamsContainerOnDashboard">
-        <!-- Bars for process metrics will be rendered here -->
+      <div class="col-md-12">
+        <div class="table-wrapper">
+          <div id="pidParamsContainerOnDashboard">
+            <!-- Table for process metrics will be rendered here -->
+          </div>
+        </div>
       </div>
     </div>
     <div class="text-center mt-4">
-      <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#startProcessModal" data-tippy-content="Click to start a new 3270Connect process.">
-        Start 3270Connect Process
+      <button class="btn btn-primary btn-lg me-2" data-bs-toggle="modal" data-bs-target="#startProcessModal" data-tippy-content="Click to start a new 3270Connect process.">
+        <i class="fas fa-rocket me-2"></i>Start 3270Connect Process
       </button>
-      <!-- New button for starting a sample 3270 App -->
-      <button class="btn btn-success ms-2" data-bs-toggle="modal" data-bs-target="#startAppModal" data-tippy-content="Click to start a sample 3270 app.">
-        Start 3270 App
+      <button class="btn btn-success btn-lg" data-bs-toggle="modal" data-bs-target="#startAppModal" data-tippy-content="Click to start a sample 3270 app.">
+        <i class="fas fa-server me-2"></i>Start 3270 App
       </button>
     </div>
   </div>
@@ -315,7 +750,19 @@
     metricsData.forEach(function(metric) { if (metric.durations && metric.durations.length > maxCount) { maxCount = metric.durations.length; } });
     var labels = [];
     for (var i = 0; i < maxCount; i++) { labels.push((i + 1)); }
-    var colors = ['rgba(75, 192, 192, 1)', 'rgba(192, 75, 192, 1)', 'rgba(192, 192, 75, 1)', 'rgba(75, 75, 192, 1)', 'rgba(192, 75, 75, 1)'];
+    
+    // Modern gradient color palette
+    var colors = [
+      'rgba(102, 126, 234, 1)',  // Purple
+      'rgba(75, 192, 192, 1)',   // Teal
+      'rgba(255, 159, 64, 1)',   // Orange
+      'rgba(118, 75, 162, 1)',   // Deep Purple
+      'rgba(255, 99, 132, 1)',   // Pink
+      'rgba(54, 162, 235, 1)',   // Blue
+      'rgba(153, 102, 255, 1)',  // Violet
+      'rgba(255, 206, 86, 1)'    // Yellow
+    ];
+    
     var datasets = [];
     metricsData.forEach(function(metric, index) {
       var data = new Array(maxCount - metric.durations.length).fill(null).concat(metric.durations);
@@ -323,19 +770,61 @@
         label: "PID " + metric.pid,
         data: data,
         borderColor: colors[index % colors.length],
-        backgroundColor: colors[index % colors.length].replace("1)", "0.2)"),
-        fill: false,
-        tension: 0.1
+        backgroundColor: colors[index % colors.length].replace("1)", "0.1)"),
+        fill: true,
+        tension: 0.4,
+        borderWidth: 3,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        pointBackgroundColor: colors[index % colors.length],
+        pointBorderColor: '#fff',
+        pointBorderWidth: 2
       });
     });
+    
     var ctx1 = document.getElementById("durationChart").getContext("2d");
     new Chart(ctx1, {
       type: "line",
       data: { labels: labels, datasets: datasets },
       options: {
-        animation: { duration: 0 },
-        scales: { y: { beginAtZero: true, title: { display: true, text: "Duration (seconds)" } }, x: { type: 'linear', position: 'bottom' } },
-        plugins: { zoom: { pan: { enabled: true, mode: 'x', speed: 10, threshold: 10 }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } } }
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 750, easing: 'easeInOutQuart' },
+        scales: { 
+          y: { 
+            beginAtZero: true, 
+            title: { display: true, text: "Duration (seconds)", font: { size: 14, weight: 'bold' } },
+            grid: { color: 'rgba(0, 0, 0, 0.05)' }
+          }, 
+          x: { 
+            type: 'linear', 
+            position: 'bottom',
+            title: { display: true, text: "Workflow Count", font: { size: 14, weight: 'bold' } },
+            grid: { color: 'rgba(0, 0, 0, 0.05)' }
+          }
+        },
+        plugins: { 
+          legend: {
+            display: true,
+            position: 'top',
+            labels: {
+              usePointStyle: true,
+              padding: 15,
+              font: { size: 12, weight: '600' }
+            }
+          },
+          tooltip: {
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            padding: 12,
+            titleFont: { size: 14, weight: 'bold' },
+            bodyFont: { size: 13 },
+            cornerRadius: 8
+          },
+          zoom: { 
+            pan: { enabled: true, mode: 'x', speed: 10, threshold: 10 }, 
+            zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } 
+          } 
+        }
       }
     });
     var aggregatedCPU = [];
@@ -359,30 +848,83 @@
     var labels2 = [];
     for (var i = 0; i < maxLen; i++) { labels2.push(" " + (i + 1)); }
     var cpuMemDatasets = [ {
-      label: "Total CPU Usage",
+      label: "CPU Usage (%)",
       data: new Array(maxLen - aggregatedCPU.length).fill(null).concat(aggregatedCPU),
-      borderColor: "rgba(75, 192, 192, 1)",
-      backgroundColor: "rgba(75, 192, 192, 0.2)",
-      fill: false
+      borderColor: "rgba(102, 126, 234, 1)",
+      backgroundColor: "rgba(102, 126, 234, 0.1)",
+      fill: true,
+      tension: 0.4,
+      borderWidth: 3,
+      pointRadius: 4,
+      pointHoverRadius: 6,
+      pointBackgroundColor: "rgba(102, 126, 234, 1)",
+      pointBorderColor: '#fff',
+      pointBorderWidth: 2
     },
     {
-      label: "Total Memory Usage",
+      label: "Memory Usage (%)",
       data: new Array(maxLen - hostMemory.length).fill(null).concat(hostMemory),
-      borderColor: "rgba(192, 75, 75, 1)",
-      backgroundColor: "rgba(192, 75, 75, 0.2)",
-      fill: false
+      borderColor: "rgba(245, 87, 108, 1)",
+      backgroundColor: "rgba(245, 87, 108, 0.1)",
+      fill: true,
+      tension: 0.4,
+      borderWidth: 3,
+      pointRadius: 4,
+      pointHoverRadius: 6,
+      pointBackgroundColor: "rgba(245, 87, 108, 1)",
+      pointBorderColor: '#fff',
+      pointBorderWidth: 2
     }];
     var ctx2 = document.getElementById("cpuMemChart").getContext("2d");
     new Chart(ctx2, {
       type: "line",
       data: { labels: labels2, datasets: cpuMemDatasets },
       options: {
-        animation: { duration: 0 },
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 750, easing: 'easeInOutQuart' },
         scales: {
-          x: { beginAtZero: true, title: { display: true, text: "Duration (seconds)" }, type: 'linear', position: 'bottom' },
-          y: { beginAtZero: true, title: { display: true, text: "Percentage" } },
+          x: { 
+            beginAtZero: true, 
+            title: { display: true, text: "Time (seconds)", font: { size: 14, weight: 'bold' } }, 
+            type: 'linear', 
+            position: 'bottom',
+            grid: { color: 'rgba(0, 0, 0, 0.05)' }
+          },
+          y: { 
+            beginAtZero: true, 
+            max: 100,
+            title: { display: true, text: "Usage (%)", font: { size: 14, weight: 'bold' } },
+            grid: { color: 'rgba(0, 0, 0, 0.05)' }
+          }
         },
-        plugins: { zoom: { pan: { enabled: true, mode: 'x', speed: 10, threshold: 10 }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } } }
+        plugins: { 
+          legend: {
+            display: true,
+            position: 'top',
+            labels: {
+              usePointStyle: true,
+              padding: 15,
+              font: { size: 12, weight: '600' }
+            }
+          },
+          tooltip: {
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            padding: 12,
+            titleFont: { size: 14, weight: 'bold' },
+            bodyFont: { size: 13 },
+            cornerRadius: 8,
+            callbacks: {
+              label: function(context) {
+                return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + '%';
+              }
+            }
+          },
+          zoom: { 
+            pan: { enabled: true, mode: 'x', speed: 10, threshold: 10 }, 
+            zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } 
+          } 
+        }
       }
     });
     var pidSelect = document.getElementById("pidFilter");
@@ -561,25 +1103,24 @@
     pidSelect.addEventListener("change", function() { loadLogs(); });
     autoRefreshLogsCheckbox.addEventListener("change", function(){ if(this.checked) { startLogsAutoRefresh(parseInt(refreshIntervalSelect.value)); } else { stopLogsAutoRefresh(); } });
     refreshIntervalSelect.addEventListener("change", function(){ if(autoRefreshLogsCheckbox.checked) { stopLogsAutoRefresh(); startLogsAutoRefresh(parseInt(this.value)); } });
-    // Add PID info below the graphs
-    // Replace the PID info section with a table
+    // Add PID info below the graphs with modern styling
     var pidInfoContainer = document.getElementById("pidParamsContainerOnDashboard");
     pidInfoContainer.innerHTML = "";
     var table = document.createElement("table");
-    table.classList.add("table", "table-striped", "table-bordered", "table-sm");
+    table.classList.add("table", "table-hover");
     var thead = document.createElement("thead");
     thead.innerHTML = `
       <tr>
-        <th>Menu</th>
-        <th>PID</th>
-        <th>Status</th>
-        <th>Remaining</th>
-        <th>Active</th>
-        <th>Started</th>
-        <th>Completed</th>
-        <th>Failed</th>
-        <th>Avg Time</th>
-        <th>Params</th>
+        <th><i class="fas fa-bars"></i> Actions</th>
+        <th><i class="fas fa-hashtag"></i> PID</th>
+        <th><i class="fas fa-info-circle"></i> Status</th>
+        <th><i class="fas fa-hourglass-half"></i> Time Left</th>
+        <th><i class="fas fa-spinner"></i> Active</th>
+        <th><i class="fas fa-play"></i> Started</th>
+        <th><i class="fas fa-check"></i> Completed</th>
+        <th><i class="fas fa-times"></i> Failed</th>
+        <th><i class="fas fa-clock"></i> Avg Time</th>
+        <th><i class="fas fa-cog"></i> Parameters</th>
       </tr>
     `;
     table.appendChild(thead);
@@ -589,18 +1130,18 @@
       var row = document.createElement("tr");
       row.innerHTML = `
         <td style="text-align: center;">
-          <i class="fa-solid fa-file-alt" style="cursor:pointer;" onclick="openLogsModal(${metric.pid})" data-tippy-content="Show Logs: ${metric.pid}"></i>
-          <i class="fa-solid fa-skull" style="cursor:pointer; color: red; margin-left: 5px;" onclick="confirmKill(${metric.pid}, '${metric.params || '-dashboard'}')" data-tippy-content="Kill PID: ${metric.pid}"></i>
+          <i class="fas fa-file-alt action-icon logs" onclick="openLogsModal(${metric.pid})" data-tippy-content="View Logs"></i>
+          <i class="fas fa-skull-crossbones action-icon kill" onclick="confirmKill(${metric.pid}, '${metric.params || '-dashboard'}')" data-tippy-content="Terminate Process"></i>
         </td>
-        <td style="color: green;">${metric.pid}</td>
-        <td>${metric.status || '-'}</td>
-        <td>${(typeof metric.timeLeft !== 'undefined' && metric.timeLeft !== null && metric.timeLeft !== 0) ? metric.timeLeft + 's' : '-'}</td>
-        <td>${metric.activeWorkflows || '-'}</td>
-        <td>${metric.totalWorkflowsStarted || '-'}</td>
-        <td>${metric.totalWorkflowsCompleted || '-'}</td>
-        <td>${metric.totalWorkflowsFailed || '-'}</td>
-        <td>${isNaN(avgCompletionTime) ? '-' : avgCompletionTime.toFixed(2) + 's'}</td>
-        <td>${metric.params || '-dashboard'}</td>
+        <td><strong>${metric.pid}</strong></td>
+        <td><span class="badge bg-info">${metric.status || 'Running'}</span></td>
+        <td>${(typeof metric.timeLeft !== 'undefined' && metric.timeLeft !== null && metric.timeLeft !== 0) ? '<span class="badge bg-warning text-dark">' + metric.timeLeft + 's</span>' : '<span class="badge bg-secondary">-</span>'}</td>
+        <td>${metric.activeWorkflows || '0'}</td>
+        <td>${metric.totalWorkflowsStarted || '0'}</td>
+        <td><span class="badge bg-success">${metric.totalWorkflowsCompleted || '0'}</span></td>
+        <td><span class="badge bg-danger">${metric.totalWorkflowsFailed || '0'}</span></td>
+        <td>${isNaN(avgCompletionTime) ? '-' : '<strong>' + avgCompletionTime.toFixed(2) + 's</strong>'}</td>
+        <td><code>${metric.params || '-dashboard'}</code></td>
       `;
       tbody.appendChild(row);
     });
