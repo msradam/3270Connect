@@ -14,7 +14,7 @@ theme:
   name: material
   language: en
   logo: logo.png       # move your logo to docs/assets/logo.png
-  favicon: favicon.png # optional favicon
+  favicon: logo.ico # optional favicon
   icon:
     repo: fontawesome/brands/github
   features:
