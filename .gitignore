@@ -4,3 +4,6 @@ example.json
 3270Connect.exe
 logs/
 *.log
+
+# x3270 build artifacts
+.x3270_version
