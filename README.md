@@ -54,3 +54,9 @@ CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -o 3270Connect.exe go3270Connec
 ./3270Connect -verbose -headless
 
 mkdocs build
+
+## Refreshing embedded binaries
+
+Run `scripts/update-binaries.ps1` from the repo root to pull the latest Windows bundle that SourceForge publishes. By default it copies the current 64-bit `wc3270` no-install ZIP into `binaries/windows`, and you can pass `-LinuxArchiveUrl <url>` whenever you have a tarball that already holds `x3270`, `s3270`, and `x3270if` to keep `binaries/linux` in sync.
+
+Use `-RegenerateBindata` if you want the script to rerun `go-bindata -o binaries/bindata.go -pkg binaries ./binaries/...` after the download. Make sure `go-bindata` and `tar` are available in your path before rerunning that step.
