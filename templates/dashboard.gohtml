@@ -706,15 +706,43 @@
   var autoRefreshEnabled = {{.AutoRefreshEnabled}};
   var refreshPeriod = {{.RefreshPeriod}};
   var refreshIntervalId = null;
+  var autoRefreshPausedByModal = false;
+  
   function startAutoRefresh() {
-    if (autoRefreshEnabled && !refreshIntervalId) {
+    if (autoRefreshEnabled && !refreshIntervalId && !autoRefreshPausedByModal) {
       refreshIntervalId = setInterval(function() { window.location.reload(); }, parseInt(refreshPeriod) * 1000);
       console.log("Auto refresh started");
     }
   }
+  
   function stopAutoRefresh() {
-    if (refreshIntervalId) { clearInterval(refreshIntervalId); refreshIntervalId = null; console.log("Auto refresh paused"); }
+    if (refreshIntervalId) { 
+      clearInterval(refreshIntervalId); 
+      refreshIntervalId = null; 
+      console.log("Auto refresh paused"); 
+    }
   }
+  
+  function handleAutoRefreshToggle() {
+    var form = document.getElementById('autoRefreshForm');
+    var checkbox = document.getElementById('autoRefreshToggle');
+    var url = new URL(window.location.href);
+    
+    if (checkbox.checked) {
+      url.searchParams.set('autoRefresh', 'true');
+    } else {
+      url.searchParams.set('autoRefresh', 'false');
+    }
+    
+    // Preserve the refresh period
+    var refreshPeriodSelect = document.getElementById('refreshPeriodSelect');
+    if (refreshPeriodSelect.value) {
+      url.searchParams.set('refreshPeriod', refreshPeriodSelect.value);
+    }
+    
+    window.location.href = url.toString();
+  }
+  
   startAutoRefresh();
   document.addEventListener('DOMContentLoaded', function() {
     var metricsData = JSON.parse('{{.ExtendedJSON}}');
@@ -1021,13 +1049,51 @@
     }
     var consoleModal = document.getElementById("consoleModal");
     if (consoleModal) {
-      consoleModal.addEventListener('show.bs.modal', function() { stopAutoRefresh(); loadLogs(); });
-      consoleModal.addEventListener('hidden.bs.modal', function() { startAutoRefresh(); });
+      consoleModal.addEventListener('show.bs.modal', function() { 
+        autoRefreshPausedByModal = true;
+        stopAutoRefresh(); 
+        loadLogs(); 
+      });
+      consoleModal.addEventListener('hidden.bs.modal', function() { 
+        autoRefreshPausedByModal = false;
+        startAutoRefresh(); 
+      });
     }
+    
+    var startProcessModal = document.getElementById("startProcessModal");
+    if (startProcessModal) {
+      startProcessModal.addEventListener('show.bs.modal', function() { 
+        autoRefreshPausedByModal = true;
+        stopAutoRefresh(); 
+      });
+      startProcessModal.addEventListener('hidden.bs.modal', function() { 
+        autoRefreshPausedByModal = false;
+        startAutoRefresh(); 
+      });
+    }
+    
+    var startAppModal = document.getElementById("startAppModal");
+    if (startAppModal) {
+      startAppModal.addEventListener('show.bs.modal', function() { 
+        autoRefreshPausedByModal = true;
+        stopAutoRefresh(); 
+      });
+      startAppModal.addEventListener('hidden.bs.modal', function() { 
+        autoRefreshPausedByModal = false;
+        startAutoRefresh(); 
+      });
+    }
+    
     var killModal = document.getElementById("killModal");
     if (killModal) {
-      killModal.addEventListener('show.bs.modal', function() { stopAutoRefresh(); loadLogs(); });
-      killModal.addEventListener('hidden.bs.modal', function() { startAutoRefresh(); });
+      killModal.addEventListener('show.bs.modal', function() { 
+        autoRefreshPausedByModal = true;
+        stopAutoRefresh(); 
+      });
+      killModal.addEventListener('hidden.bs.modal', function() { 
+        autoRefreshPausedByModal = false;
+        startAutoRefresh(); 
+      });
     }
     var refreshIntervalId2 = null;
     function startLogsAutoRefresh(interval) { if (!refreshIntervalId2) { refreshIntervalId2 = setInterval(loadLogs, interval * 1000); } }
