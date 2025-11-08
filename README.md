@@ -1,7 +1,5 @@
 # 3270Connect
 
-![3270.io](https://raw.githubusercontent.com/3270io/3270Connect/main/docs/logo.png)
-
 ![3270Connect dashboard](https://raw.githubusercontent.com/3270io/3270Connect/main/docs/dashboard.png)
 
 3270Connect is a robust automation toolkit that provides both a command-line utility and a browser-based web console for enhancing productivity and efficiency when managing and automating interactions with mainframe 3270 applications. It acts as a bridge between modern computing environments and the traditional mainframe terminals, providing a suite of tools that facilitate automated tasks and workflows in a terminal session.

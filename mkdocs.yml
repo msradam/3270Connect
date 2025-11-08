@@ -52,7 +52,7 @@ theme:
     code: "JetBrains Mono"
 
 nav:
-  - Home: index.md
+  - Home: home.md
   - Installation: installation.md
   - Basic Usage: basic-usage.md
   - Workflow Actions: workflow.md
