@@ -444,6 +444,43 @@
       background: transparent;
     }
 
+    #pidParamsContainerOnDashboard table.table {
+      --bs-table-color: var(--card-foreground);
+      --bs-table-bg: rgba(3, 24, 18, 0.96);
+      --bs-table-striped-bg: rgba(6, 40, 29, 0.88);
+      --bs-table-striped-color: var(--card-foreground);
+      --bs-table-hover-bg: rgba(6, 40, 29, 0.9);
+      --bs-table-hover-color: var(--card-foreground);
+      --bs-table-border-color: rgba(61, 255, 154, 0.18);
+      background-color: var(--bs-table-bg);
+      color: var(--card-foreground);
+      border: 1px solid rgba(61, 255, 154, 0.18);
+      border-radius: calc(var(--radius) - 0.35rem);
+      overflow: hidden;
+    }
+
+    #pidParamsContainerOnDashboard table.table thead {
+      background-color: rgba(6, 30, 23, 0.95);
+      color: var(--primary);
+    }
+
+    #pidParamsContainerOnDashboard table.table thead th {
+      border: none;
+      border-bottom: 1px solid rgba(61, 255, 154, 0.18);
+    }
+
+    #pidParamsContainerOnDashboard table.table-hover tbody tr:hover {
+      box-shadow: inset 0 0 12px rgba(0, 255, 128, 0.08);
+    }
+
+    #pidParamsContainerOnDashboard table.table tbody tr {
+      background-color: rgba(4, 26, 19, 0.92) !important;
+    }
+
+    #pidParamsContainerOnDashboard table.table tbody td {
+      color: var(--card-foreground);
+    }
+
     .process-panel table {
       color: var(--card-foreground);
       background: transparent;
@@ -939,6 +976,25 @@
       height: 24px;
     }
 
+    .auto-refresh-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: rgba(78, 255, 176, 0.12);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .auto-refresh-control label {
+      margin: 0;
+      color: var(--muted-foreground);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+    }
+
     /* Toast Notification */
     #toast-container.toast-top-right {
       top: 80px !important;
@@ -1006,7 +1062,7 @@
       min-height: 100vh;
       display: flex;
       flex-direction: column;
-      padding: 48px 24px 96px;
+      padding: 48px 24px 0;
       background: linear-gradient(188deg, rgba(4, 26, 19, 0.92) 0%, rgba(3, 18, 14, 0.94) 38%, rgba(4, 40, 29, 0.96) 100%);
       background-image: var(--background-accent), linear-gradient(188deg, rgba(4, 26, 19, 0.92) 0%, rgba(3, 18, 14, 0.94) 38%, rgba(4, 40, 29, 0.96) 100%);
       border-radius: var(--radius);
@@ -1078,7 +1134,7 @@
 
     @media (max-width: 768px) {
       body {
-        padding: 32px 16px 64px;
+        padding: 32px 16px 0;
       }
 
       .mainframe-shell {
@@ -1160,11 +1216,29 @@
         <p class="header-subtext">Monitor workflows, resources, and process health at a glance</p>
       </div>
       <div class="header-actions">
-        <button class="neon-button" data-bs-toggle="modal" data-bs-target="#consoleModal" data-tippy-content="Show the console logs">
+        {{$refreshPeriod := printf "%v" .RefreshPeriod }}
+        <form id="autoRefreshForm" class="auto-refresh-control" onsubmit="event.preventDefault();">
+          <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" id="autoRefreshToggle" {{if .AutoRefreshEnabled}}checked{{end}} data-tippy-content="Toggle automatic dashboard refresh." onchange="handleAutoRefreshToggle()">
+            <label class="form-check-label ms-2" for="autoRefreshToggle">Auto Refresh</label>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <label for="refreshPeriodSelect">Interval</label>
+            <select class="form-select form-select-sm w-auto" id="refreshPeriodSelect" data-tippy-content="Choose how often the dashboard refreshes." onchange="handleRefreshPeriodChange()">
+              <option value="1" {{if eq $refreshPeriod "1"}}selected{{end}}>1s</option>
+              <option value="5" {{if eq $refreshPeriod "5"}}selected{{end}}>5s</option>
+              <option value="10" {{if eq $refreshPeriod "10"}}selected{{end}}>10s</option>
+              <option value="15" {{if eq $refreshPeriod "15"}}selected{{end}}>15s</option>
+              <option value="30" {{if eq $refreshPeriod "30"}}selected{{end}}>30s</option>
+              <option value="60" {{if eq $refreshPeriod "60"}}selected{{end}}>60s</option>
+            </select>
+          </div>
+        </form>
+        <button class="interface-button" data-bs-toggle="modal" data-bs-target="#consoleModal" data-tippy-content="Show the console logs">
           <i class="fas fa-terminal"></i>
           Console Logs
         </button>
-        <button class="neon-button ghost" type="button" onclick="location.reload();" data-tippy-content="Refresh the page">
+        <button class="interface-button" type="button" onclick="location.reload();" data-tippy-content="Refresh the page">
           <i class="fas fa-sync-alt"></i>
           Refresh
         </button>
@@ -1440,10 +1514,29 @@
     
     // Preserve the refresh period
     var refreshPeriodSelect = document.getElementById('refreshPeriodSelect');
-    if (refreshPeriodSelect.value) {
+    if (refreshPeriodSelect && refreshPeriodSelect.value) {
       url.searchParams.set('refreshPeriod', refreshPeriodSelect.value);
     }
     
+    window.location.href = url.toString();
+  }
+
+  function handleRefreshPeriodChange() {
+    var select = document.getElementById('refreshPeriodSelect');
+    if (!select) { return; }
+    var checkbox = document.getElementById('autoRefreshToggle');
+    var url = new URL(window.location.href);
+
+    if (select.value) {
+      url.searchParams.set('refreshPeriod', select.value);
+    }
+
+    if (checkbox && checkbox.checked) {
+      url.searchParams.set('autoRefresh', 'true');
+    } else {
+      url.searchParams.set('autoRefresh', 'false');
+    }
+
     window.location.href = url.toString();
   }
   
@@ -1529,10 +1622,12 @@
             grid: { color: 'rgba(0, 0, 0, 0.05)' }
           }, 
           x: { 
-            type: 'linear', 
+            type: 'category', 
             position: 'bottom',
+            offset: false,
+            ticks: { align: 'start' },
             title: { display: true, text: "Workflow Count", font: { size: 14, weight: 'bold' } },
-            grid: { color: 'rgba(0, 0, 0, 0.05)' }
+            grid: { color: 'rgba(0, 0, 0, 0.05)', offset: false }
           }
         },
         plugins: { 
@@ -1687,11 +1782,12 @@
         animation: { duration: 750, easing: 'easeInOutQuart' },
         scales: {
           x: { 
-            beginAtZero: true, 
-            title: { display: true, text: "Time (seconds)", font: { size: 14, weight: 'bold' } }, 
-            type: 'linear', 
+            type: 'category',
             position: 'bottom',
-            grid: { color: 'rgba(0, 0, 0, 0.05)' }
+            offset: false,
+            ticks: { align: 'start' },
+            title: { display: true, text: "Time (seconds)", font: { size: 14, weight: 'bold' } }, 
+            grid: { color: 'rgba(0, 0, 0, 0.05)', offset: false }
           },
           y: { 
             beginAtZero: true, 
