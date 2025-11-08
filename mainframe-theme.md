@@ -10,40 +10,40 @@ This theme creates an authentic mainframe terminal aesthetic with modern web tec
 
 ### Core Colors
 
-The theme uses the OKLCH color space for better perceptual uniformity and accessibility.
+The theme now uses calibrated hex and RGBA values tuned for the refreshed dashboard treatment.
 
 #### Background Colors
 ```css
---background: #02100b;                     /* Deep coal base */
---card: rgba(5, 28, 21, 0.92);              /* Luminous panel surface */
---popover: rgba(8, 36, 28, 0.9);            /* Overlay panels */
---input: rgba(7, 30, 24, 0.85);             /* Input shells */
---muted: rgba(4, 22, 17, 0.7);              /* Subdued fills */
+--background: #031611;                     /* Deep coal base */
+--card: rgba(8, 52, 38, 0.94);              /* Luminous panel surface */
+--popover: rgba(10, 56, 41, 0.92);          /* Overlay panels */
+--input: rgba(10, 38, 30, 0.9);             /* Input shells */
+--muted: rgba(5, 30, 22, 0.65);             /* Subdued fills */
 ```
 
 #### Foreground Colors
 ```css
---foreground: #a2ffe8;                     /* Primary terminal text */
---card-foreground: #d9fff1;                /* Panel headline text */
---popover-foreground: #b8ffe7;             /* Overlay text */
---muted-foreground: #5ed4a7;               /* Secondary copy */
+--foreground: #cafee9;                     /* Primary terminal text */
+--card-foreground: #ecfff7;                /* Panel headline text */
+--popover-foreground: #d4ffee;             /* Overlay text */
+--muted-foreground: #70e7b6;               /* Secondary copy */
 ```
 
 #### Accent Colors
 ```css
---primary: #3dff9a;                        /* Neon command highlights */
+--primary: #4effb3;                        /* Neon command highlights */
 --primary-foreground: #02130a;             /* Text on primary */
---accent: #f5b35f;                         /* Amber status cues */
+--accent: #f7c36b;                         /* Amber status cues */
 --accent-foreground: #04130b;              /* Text on accent */
---secondary: rgba(58, 126, 97, 0.75);      /* Auxiliary panels */
---secondary-foreground: #bfffe9;           /* Text on secondary */
+--secondary: rgba(84, 160, 126, 0.78);     /* Auxiliary panels */
+--secondary-foreground: #dcfff3;           /* Text on secondary */
 ```
 
 #### Interactive Colors
 ```css
---border: rgba(61, 255, 154, 0.35);        /* Neon perimeter lines */
---ring: rgba(61, 255, 154, 0.55);          /* Focus rings */
---destructive: #ff5b6f;                    /* Error red */
+--border: rgba(78, 255, 176, 0.38);        /* Neon perimeter lines */
+--ring: rgba(78, 255, 176, 0.58);          /* Focus rings */
+--destructive: #ff6f82;                    /* Error red */
 --destructive-foreground: #fff5f7;         /* Text on destructive */
 ```
 

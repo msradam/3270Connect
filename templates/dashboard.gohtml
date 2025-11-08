@@ -22,14 +22,36 @@
   <style>
     :root {
       /* Yorkshire Mainframe System palette */
-      --background: #02100b;
-      --background-accent: radial-gradient(120% 120% at 50% 0%, rgba(61, 255, 154, 0.08), transparent 60%);
-      --card: rgba(5, 28, 21, 0.92);
-      --popover: rgba(8, 36, 28, 0.9);
-      --input: rgba(7, 30, 24, 0.85);
-      --muted: rgba(4, 22, 17, 0.7);
+      --background: #031611;
+      --background-accent: radial-gradient(135% 135% at 50% -10%, rgba(77, 255, 176, 0.16), transparent 65%);
+      --card: rgba(8, 52, 38, 0.94);
+      --popover: rgba(10, 56, 41, 0.92);
+      --input: rgba(10, 38, 30, 0.9);
+      --muted: rgba(5, 30, 22, 0.65);
 
-      --foreground: #a2ffe8;
+      --foreground: #cafee9;
+      --card-foreground: #ecfff7;
+      --popover-foreground: #d4ffee;
+      --muted-foreground: #70e7b6;
+
+      --primary: #4effb3;
+      --primary-foreground: #02130a;
+      --accent: #f7c36b;
+      --accent-foreground: #04130b;
+      --secondary: rgba(84, 160, 126, 0.78);
+      --secondary-foreground: #dcfff3;
+
+      --border: rgba(78, 255, 176, 0.38);
+      --ring: rgba(78, 255, 176, 0.58);
+      --destructive: #ff6f82;
+      --destructive-foreground: #fff5f7;
+
+      --radius: 0.75rem;
+      --shadow-sm: 0 0 16px rgba(78, 255, 176, 0.14);
+      --shadow-md: 0 0 28px rgba(78, 255, 176, 0.18);
+      --shadow-lg: 0 0 40px rgba(78, 255, 176, 0.28);
+    }
+
     .header-subtext {
       font-size: 1rem;
       color: var(--muted-foreground);
@@ -44,42 +66,9 @@
       align-items: center;
     }
 
-    .neon-button {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 12px 20px;
-      background: rgba(61, 255, 154, 0.14);
-      color: var(--card-foreground);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      font-weight: 600;
-      font-family: 'JetBrains Mono', monospace;
-      letter-spacing: 0.06em;
-      transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
-      text-transform: uppercase;
-    }
-
-    .neon-button:hover {
-      transform: translateY(-2px);
-      box-shadow: var(--shadow-sm);
-      background: rgba(61, 255, 154, 0.22);
-    }
-
-    .neon-button.ghost {
-      background: rgba(61, 255, 154, 0.05);
-    }
-
-    .mainframe-grid {
-      display: grid;
-      grid-template-columns: minmax(260px, 1.05fr) minmax(360px, 1.4fr) minmax(260px, 0.95fr);
-      gap: 24px;
-      width: 100%;
-    }
-
     .panel {
-      background: linear-gradient(180deg, rgba(6, 34, 24, 0.92) 0%, rgba(3, 16, 12, 0.95) 100%);
-      border: 1px solid rgba(61, 255, 154, 0.25);
+      background: linear-gradient(186deg, rgba(9, 60, 43, 0.95) 0%, rgba(3, 20, 15, 0.97) 100%);
+      border: 1px solid rgba(78, 255, 176, 0.26);
       border-radius: var(--radius);
       box-shadow: var(--shadow-sm);
       position: relative;
@@ -93,7 +82,7 @@
       position: absolute;
       inset: 0;
       border-radius: var(--radius);
-      border: 1px solid rgba(61, 255, 154, 0.08);
+      border: 1px solid rgba(78, 255, 176, 0.14);
       pointer-events: none;
     }
 
@@ -153,6 +142,7 @@
     .terminal-line {
       font-size: 0.95rem;
       letter-spacing: 0.03em;
+      color: var(--card-foreground);
     }
 
     .terminal-line.accent {
@@ -184,53 +174,47 @@
       color: var(--primary);
     }
 
-    .terminal-commands {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 8px;
-    }
-
-    .terminal-commands button {
-      background: rgba(61, 255, 154, 0.08);
-      border: 1px solid rgba(61, 255, 154, 0.2);
-      border-radius: 999px;
-      padding: 6px 14px;
-      color: var(--card-foreground);
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.82rem;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    .terminal-commands button:hover {
-      background: rgba(61, 255, 154, 0.18);
-      box-shadow: var(--shadow-sm);
-    }
-
     .command-panel {
       gap: 0;
     }
 
-    .command-display {
-      padding: 8px 24px 20px;
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 18px;
+      padding: 0 24px 24px;
+    }
+
+    .metric-tile {
+      background: rgba(6, 30, 23, 0.9);
+      border: 1px solid rgba(78, 255, 176, 0.22);
+      border-radius: calc(var(--radius) - 0.35rem);
+      padding: 16px;
       display: flex;
       flex-direction: column;
       gap: 6px;
-      color: var(--card-foreground);
-      text-align: center;
+      box-shadow: inset 0 0 18px rgba(6, 48, 34, 0.4);
     }
 
-    .command-display span {
-      font-size: 1.05rem;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-    }
-
-    .command-display small {
-      color: var(--muted-foreground);
+    .metric-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
       letter-spacing: 0.08em;
       text-transform: uppercase;
+      color: var(--muted-foreground);
+    }
+
+    .metric-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.9rem;
+      font-weight: 700;
+      color: var(--card-foreground);
+    }
+
+    .metric-trend {
+      font-size: 0.75rem;
+      color: var(--muted-foreground);
+      letter-spacing: 0.05em;
     }
 
     .command-actions {
@@ -238,7 +222,7 @@
       display: flex;
       flex-wrap: wrap;
       gap: 12px;
-      justify-content: center;
+      justify-content: flex-start;
     }
 
     .interface-button {
@@ -247,24 +231,24 @@
       gap: 10px;
       padding: 12px 24px;
       border-radius: var(--radius);
-      border: 1px solid rgba(61, 255, 154, 0.25);
+      border: 1px solid rgba(78, 255, 176, 0.25);
       font-family: 'JetBrains Mono', monospace;
       font-size: 0.9rem;
       letter-spacing: 0.08em;
       text-transform: uppercase;
-      background: rgba(61, 255, 154, 0.12);
+      background: rgba(78, 255, 176, 0.14);
       color: var(--card-foreground);
       transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
     }
 
     .interface-button.secondary {
-      background: rgba(61, 255, 154, 0.05);
+      background: rgba(78, 255, 176, 0.06);
     }
 
     .interface-button:hover {
       transform: translateY(-2px);
       box-shadow: var(--shadow-sm);
-      background: rgba(61, 255, 154, 0.2);
+      background: rgba(78, 255, 176, 0.22);
     }
 
     .chart-grid {
@@ -276,8 +260,8 @@
     }
 
     .chart-card {
-      background: rgba(2, 14, 10, 0.85);
-      border: 1px solid rgba(61, 255, 154, 0.15);
+      background: rgba(7, 36, 27, 0.9);
+      border: 1px solid rgba(78, 255, 176, 0.18);
       border-radius: calc(var(--radius) - 0.4rem);
       padding: 18px;
       box-shadow: inset 0 0 18px rgba(6, 48, 34, 0.55);
@@ -307,8 +291,9 @@
       gap: 12px;
       align-items: center;
       justify-content: space-between;
-      color: var(--muted-foreground);
+      color: var(--card-foreground);
       font-size: 0.85rem;
+      font-weight: 500;
     }
 
     .chart-slider input[type="range"] {
@@ -953,10 +938,10 @@
       color: var(--destructive-foreground) !important;
     }
 
-    code {
-      background: var(--input);
-      color: var(--primary);
-      padding: 2px 6px;
+    body {
+      padding: 48px 24px 96px;
+      background: linear-gradient(188deg, rgba(4, 26, 19, 0.92) 0%, rgba(3, 18, 14, 0.94) 38%, rgba(4, 40, 29, 0.96) 100%);
+      background-image: var(--background-accent), linear-gradient(188deg, rgba(4, 26, 19, 0.92) 0%, rgba(3, 18, 14, 0.94) 38%, rgba(4, 40, 29, 0.96) 100%);
       border-radius: var(--radius);
       font-family: 'JetBrains Mono', monospace;
     }
@@ -1018,6 +1003,10 @@
         width: 100%;
         justify-content: flex-start;
       }
+
+      .metric-grid {
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
     }
 
     @media (max-width: 768px) {
@@ -1031,6 +1020,11 @@
 
       .command-actions {
         justify-content: flex-start;
+      }
+
+      .metric-grid {
+        grid-template-columns: 1fr;
+        padding: 0 16px 20px;
       }
 
       .chart-container {
@@ -1090,9 +1084,9 @@
   <div class="mainframe-shell">
     <header class="mainframe-header">
       <div class="header-titles">
-        <p class="header-eyebrow">Secure Terminal Access · Secret location somewhere in West Yorkshire · Hyperfocus Protocol Active</p>
-        <h1>Yorkshire Mainframe System<span class="cursor">█</span></h1>
-        <p class="header-subtext">Authenticated session · Monitoring legacy workflows in real time</p>
+        <p class="header-eyebrow">Real-time visibility - Yorkshire mainframe heritage - Secure operator session</p>
+        <h1>3270Connect Dashboard<span class="cursor">█</span></h1>
+        <p class="header-subtext">Monitor workflows, resources, and process health at a glance</p>
       </div>
       <div class="header-actions">
         <button class="neon-button" data-bs-toggle="modal" data-bs-target="#consoleModal" data-tippy-content="Show the console logs">
@@ -1117,35 +1111,44 @@
           </div>
         </div>
         <div class="panel-body terminal-body">
-          <p class="terminal-line accent">YORKSHIRE MAINFRAME TERMINAL v2.1.7</p>
-          <p class="terminal-line">Initializing secure connection...</p>
-          <p class="terminal-line">Authentication: <span class="success">OK</span></p>
-          <p class="terminal-line">Location: <span class="muted">[CLASSIFIED] · West Yorkshire</span></p>
-          <p class="terminal-line">Status: Hyperfocus mode active</p>
+          <p class="terminal-line accent">3270CONNECT OPS TERMINAL v{{.Version}}</p>
+          <p class="terminal-line">Connection: <span class="success">ONLINE</span></p>
+          <p class="terminal-line">Auto refresh: <span class="muted">{{if .AutoRefreshEnabled}}Enabled ({{.RefreshPeriod}}s){{else}}Manual control{{end}}</span></p>
           <p class="terminal-line">Active workflows: <span class="numeric">{{.ActiveWorkflows}}</span></p>
           <p class="terminal-line">Completed workflows: <span class="numeric">{{.TotalWorkflowsCompleted}}</span></p>
+          <p class="terminal-line">Total started: <span class="numeric">{{.TotalWorkflowsStarted}}</span></p>
+          <p class="terminal-line">Total failed: <span class="numeric">{{.TotalWorkflowsFailed}}</span></p>
           <div class="terminal-divider"></div>
-          <p class="terminal-prompt">$ Type a command...</p>
-          <div class="terminal-commands">
-            <button type="button">help</button>
-            <button type="button">about</button>
-            <button type="button">projects</button>
-            <button type="button">skills</button>
-            <button type="button">contact</button>
-            <button type="button">games</button>
-            <button type="button">yorkshire</button>
-          </div>
+          <p class="terminal-line">Use the controls to launch or inspect processes. Console logs open in a dedicated modal.</p>
         </div>
       </section>
 
       <section class="panel command-panel">
         <div class="panel-header">
           <span>System Interface</span>
-          <span class="panel-subtext">Neurodivergent mode: Active</span>
+          <span class="panel-subtext">Live controls &amp; insights</span>
         </div>
-        <div class="command-display">
-          <span>Execute a command to display system information</span>
-          <small>Type 'help' for available commands.</small>
+        <div class="metric-grid">
+          <div class="metric-tile">
+            <span class="metric-label">Active Workflows</span>
+            <span class="metric-value">{{.ActiveWorkflows}}</span>
+            <span class="metric-trend">Currently running processes</span>
+          </div>
+          <div class="metric-tile">
+            <span class="metric-label">Total Started</span>
+            <span class="metric-value">{{.TotalWorkflowsStarted}}</span>
+            <span class="metric-trend">Lifetime workflows launched</span>
+          </div>
+          <div class="metric-tile">
+            <span class="metric-label">Completed</span>
+            <span class="metric-value">{{.TotalWorkflowsCompleted}}</span>
+            <span class="metric-trend">Finished without error</span>
+          </div>
+          <div class="metric-tile">
+            <span class="metric-label">Failed</span>
+            <span class="metric-value">{{.TotalWorkflowsFailed}}</span>
+            <span class="metric-trend">Attention required</span>
+          </div>
         </div>
         <div class="command-actions">
           <button class="interface-button" type="button" data-bs-toggle="modal" data-bs-target="#startProcessModal" data-tippy-content="Start a new 3270Connect process">
@@ -1188,7 +1191,7 @@
       <section class="panel status-panel">
         <div class="panel-header">
           <span>System Monitor</span>
-          <span class="panel-subtext">Deep work hours</span>
+          <span class="panel-subtext">Resource status</span>
         </div>
         <div class="status-section">
           <div class="status-item">
@@ -1254,9 +1257,9 @@
     </section>
 
     <footer class="mainframe-footer">
-      <span>Yorkshire Mainframe Terminal · Authenticated Session · Deep Work Mode</span>
-      <span>Session v{{.Version}} · &copy; {{.Year}} 3270Connect</span>
-      <span>"Where there's muck, there's brass." · "Where there's legacy code, there's opportunity."</span>
+      <span>3270Connect Control Surface - Authenticated Session - Operator View</span>
+      <span>Session v{{.Version}} - &copy; {{.Year}} 3270Connect</span>
+      <span>"Where there's muck, there's brass." - "Where there's legacy code, there's opportunity."</span>
     </footer>
   </div>
   <!-- Tooltip for notifications -->
