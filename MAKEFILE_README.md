@@ -116,6 +116,11 @@ binaries/
 4. Copies binaries to `binaries/windows/`
 5. Strips binaries using MinGW strip tool
 
+**Note:** Windows cross-compilation from Linux may fail due to missing dependencies (libiconv, OpenSSL for MinGW). If the build fails:
+- Use the existing pre-built Windows binaries already in the repository
+- Build natively on Windows using Visual Studio or MinGW
+- Use the VisualStudio project files included in the x3270 repository
+
 ## Version Tracking
 
 The Makefile maintains a `.x3270_version` file that records the last successfully built version. This prevents redundant rebuilds when you run `make` multiple times with the same version.
@@ -146,6 +151,22 @@ Clean and retry:
 make deepclean
 make
 ```
+
+### Windows Cross-Compilation Issues
+Windows builds may fail on Linux due to missing MinGW dependencies:
+- `libiconv` for MinGW
+- `OpenSSL` for MinGW  
+- Other Windows-specific libraries
+
+**Solutions:**
+1. Use the pre-built Windows binaries already in the repository
+2. Build on Windows natively (recommended for Windows binaries)
+3. Install additional MinGW libraries (if available for your distribution)
+
+For native Windows builds, use:
+- Visual Studio project files in the x3270 repository's `VisualStudio/` directory
+- MinGW-w64 with MSYS2 on Windows
+- Windows Subsystem for Linux (WSL) with native Windows toolchain
 
 ### Missing Binaries
 If some binaries are missing after build, the x3270 version might not include all components. Check the x3270 release notes for the version you're building.
