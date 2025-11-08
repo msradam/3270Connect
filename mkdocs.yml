@@ -8,6 +8,7 @@ repo_name: GitHub
 edit_uri: edit/main/docs/
 site_dir: site
 docs_dir: docs
+use_directory_urls: true
 
 theme:
   name: material
@@ -69,7 +70,6 @@ plugins:
   - mkdocs-video:
       is_video: true
       video_autoplay: false
-  - simple
   - tags:
       enabled: true
 
