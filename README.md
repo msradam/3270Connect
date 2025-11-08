@@ -57,6 +57,4 @@ mkdocs build
 
 ## Refreshing embedded binaries
 
-Run `.\update-binaries.ps1` from the repo root (or call `.\scripts/update-binaries.ps1` directly) to download the most recent Windows bundle that SourceForge publishes. By default it copies the 64-bit `wc3270` no-install ZIP content into `binaries/windows`; supply `-LinuxArchiveUrl <url>` when you have a tarball that already contains `x3270`, `s3270`, and `x3270if` so `binaries/linux` stays in sync.
-
-Add `-RegenerateBindata` to rerun `go-bindata -o binaries/bindata.go -pkg binaries ./binaries/...` after the download. Make sure `go-bindata` and `tar` are available in the path before you ask the script to run it.
+Run `.\update-binaries.ps1` from the repo root after you update `binaries/linux` or `binaries/windows`. The script now simply runs `go-bindata -o binaries/bindata.go -pkg binaries ./binaries/...` against the assets that already live in those directories, so make sure the native executables you need are in place beforehand.
