@@ -14,37 +14,37 @@ The theme uses the OKLCH color space for better perceptual uniformity and access
 
 #### Background Colors
 ```css
---background: oklch(0.15 0.01 270);        /* Coal Black - Deep, rich black */
---card: oklch(0.18 0.02 270);              /* Slightly lighter coal for cards */
---popover: oklch(0.20 0.02 270);           /* Popover background */
---input: oklch(0.25 0.03 270);             /* Input field background */
---muted: oklch(0.25 0.02 270);             /* Muted elements */
+--background: #02100b;                     /* Deep coal base */
+--card: rgba(5, 28, 21, 0.92);              /* Luminous panel surface */
+--popover: rgba(8, 36, 28, 0.9);            /* Overlay panels */
+--input: rgba(7, 30, 24, 0.85);             /* Input shells */
+--muted: rgba(4, 22, 17, 0.7);              /* Subdued fills */
 ```
 
 #### Foreground Colors
 ```css
---foreground: oklch(0.75 0.15 145);        /* Terminal Green - Primary text */
---card-foreground: oklch(0.75 0.15 145);   /* Card text */
---popover-foreground: oklch(0.75 0.15 145); /* Popover text */
---muted-foreground: oklch(0.55 0.08 145);  /* Secondary text */
+--foreground: #a2ffe8;                     /* Primary terminal text */
+--card-foreground: #d9fff1;                /* Panel headline text */
+--popover-foreground: #b8ffe7;             /* Overlay text */
+--muted-foreground: #5ed4a7;               /* Secondary copy */
 ```
 
 #### Accent Colors
 ```css
---primary: oklch(0.75 0.15 145);           /* Terminal Green - Primary actions */
---primary-foreground: oklch(0.15 0.01 270); /* Text on primary */
---accent: oklch(0.70 0.15 85);             /* Warning Amber - Highlights */
---accent-foreground: oklch(0.15 0.01 270); /* Text on accent */
---secondary: oklch(0.35 0.02 250);         /* Steel Gray - Secondary elements */
---secondary-foreground: oklch(0.75 0.15 145); /* Text on secondary */
+--primary: #3dff9a;                        /* Neon command highlights */
+--primary-foreground: #02130a;             /* Text on primary */
+--accent: #f5b35f;                         /* Amber status cues */
+--accent-foreground: #04130b;              /* Text on accent */
+--secondary: rgba(58, 126, 97, 0.75);      /* Auxiliary panels */
+--secondary-foreground: #bfffe9;           /* Text on secondary */
 ```
 
 #### Interactive Colors
 ```css
---border: oklch(0.30 0.05 145);            /* Border color with subtle green tint */
---ring: oklch(0.70 0.12 145);              /* Focus ring */
---destructive: oklch(0.60 0.20 15);        /* Error Red */
---destructive-foreground: oklch(0.95 0.02 145); /* Text on destructive */
+--border: rgba(61, 255, 154, 0.35);        /* Neon perimeter lines */
+--ring: rgba(61, 255, 154, 0.55);          /* Focus rings */
+--destructive: #ff5b6f;                    /* Error red */
+--destructive-foreground: #fff5f7;         /* Text on destructive */
 ```
 
 ### Color Usage Guidelines
@@ -94,13 +94,13 @@ The theme uses the OKLCH color space for better perceptual uniformity and access
 
 ### Border Radius
 
-The theme uses minimal, sharp corners to evoke the geometric precision of terminal interfaces:
+Modernised panels lean into gently rounded CRT glass corners:
 
 ```css
---radius: 0.125rem; /* Sharp, minimal rounding (2px) */
+--radius: 0.75rem; /* Generous 12px rounding */
 ```
 
-Apply minimal rounding to cards, inputs, and containers to maintain the technical aesthetic.
+Apply this radius to cards, inputs, and containers for a softened retro-futuristic silhouette.
 
 ### Spacing Scale
 

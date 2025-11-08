@@ -21,51 +21,424 @@
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
-      /* Yorkshire Mainframe Theme - OKLCH Color Palette */
-      --background: oklch(0.15 0.01 270);        /* Coal Black - Deep, rich black */
-      --card: oklch(0.18 0.02 270);              /* Slightly lighter coal for cards */
-      --popover: oklch(0.20 0.02 270);           /* Popover background */
-      --input: oklch(0.25 0.03 270);             /* Input field background */
-      --muted: oklch(0.25 0.02 270);             /* Muted elements */
-      
-      --foreground: oklch(0.75 0.15 145);        /* Terminal Green - Primary text */
-      --card-foreground: oklch(0.75 0.15 145);   /* Card text */
-      --popover-foreground: oklch(0.75 0.15 145); /* Popover text */
-      --muted-foreground: oklch(0.55 0.08 145);  /* Secondary text */
-      
-      --primary: oklch(0.75 0.15 145);           /* Terminal Green - Primary actions */
-      --primary-foreground: oklch(0.15 0.01 270); /* Text on primary */
-      --accent: oklch(0.70 0.15 85);             /* Warning Amber - Highlights */
-      --accent-foreground: oklch(0.15 0.01 270); /* Text on accent */
-      --secondary: oklch(0.35 0.02 250);         /* Steel Gray - Secondary elements */
-      --secondary-foreground: oklch(0.75 0.15 145); /* Text on secondary */
-      
-      --border: oklch(0.30 0.05 145);            /* Border color with subtle green tint */
-      --ring: oklch(0.70 0.12 145);              /* Focus ring */
-      --destructive: oklch(0.60 0.20 15);        /* Error Red */
-      --destructive-foreground: oklch(0.95 0.02 145); /* Text on destructive */
-      
-      --radius: 0.125rem; /* Sharp, minimal rounding (2px) */
-      --shadow-sm: 0 0 10px rgba(0, 255, 128, 0.1);
-      --shadow-md: 0 0 15px rgba(0, 255, 128, 0.15);
-      --shadow-lg: 0 0 20px rgba(0, 255, 128, 0.2);
+      /* Yorkshire Mainframe System palette */
+      --background: #02100b;
+      --background-accent: radial-gradient(120% 120% at 50% 0%, rgba(61, 255, 154, 0.08), transparent 60%);
+      --card: rgba(5, 28, 21, 0.92);
+      --popover: rgba(8, 36, 28, 0.9);
+      --input: rgba(7, 30, 24, 0.85);
+      --muted: rgba(4, 22, 17, 0.7);
+
+      --foreground: #a2ffe8;
+    .header-subtext {
+      font-size: 1rem;
+      color: var(--muted-foreground);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
     }
 
-    /* Terminal and Content Fonts */
-    .terminal-font {
+    .header-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .neon-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 20px;
+      background: rgba(61, 255, 154, 0.14);
+      color: var(--card-foreground);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-weight: 600;
       font-family: 'JetBrains Mono', monospace;
+      letter-spacing: 0.06em;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+      text-transform: uppercase;
     }
 
-    .content-font {
-      font-family: 'Inter', sans-serif;
+    .neon-button:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-sm);
+      background: rgba(61, 255, 154, 0.22);
     }
 
-    body { 
-      padding-top: 70px; 
-      padding-bottom: 70px; 
-      background: var(--background);
-      font-family: 'Inter', sans-serif;
-      color: var(--foreground);
+    .neon-button.ghost {
+      background: rgba(61, 255, 154, 0.05);
+    }
+
+    .mainframe-grid {
+      display: grid;
+      grid-template-columns: minmax(260px, 1.05fr) minmax(360px, 1.4fr) minmax(260px, 0.95fr);
+      gap: 24px;
+      width: 100%;
+    }
+
+    .panel {
+      background: linear-gradient(180deg, rgba(6, 34, 24, 0.92) 0%, rgba(3, 16, 12, 0.95) 100%);
+      border: 1px solid rgba(61, 255, 154, 0.25);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: var(--radius);
+      border: 1px solid rgba(61, 255, 154, 0.08);
+      pointer-events: none;
+    }
+
+    .panel-header {
+      padding: 20px 24px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.95rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted-foreground);
+    }
+
+    .panel-subtext {
+      font-size: 0.75rem;
+      color: var(--muted-foreground);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .panel-body {
+      padding: 0 24px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .terminal-panel .panel-header {
+      color: var(--card-foreground);
+    }
+
+    .status-lights {
+      display: flex;
+      gap: 6px;
+    }
+
+    .status-lights .light {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+      background-color: currentColor;
+      box-shadow: 0 0 12px currentColor;
+    }
+
+    .status-lights .light.red { color: #ff6b6b; }
+    .status-lights .light.amber { color: #f8d46a; }
+    .status-lights .light.green { color: #3dff9a; }
+
+    .terminal-body {
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--card-foreground);
+    }
+
+    .terminal-line {
+      font-size: 0.95rem;
+      letter-spacing: 0.03em;
+    }
+
+    .terminal-line.accent {
+      color: var(--primary);
+      font-weight: 700;
+    }
+
+    .terminal-line .success {
+      color: var(--primary);
+    }
+
+    .terminal-line .muted {
+      color: var(--muted-foreground);
+    }
+
+    .terminal-line .numeric {
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .terminal-divider {
+      margin: 12px 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(61, 255, 154, 0.4), transparent);
+    }
+
+    .terminal-prompt {
+      margin: 0;
+      color: var(--primary);
+    }
+
+    .terminal-commands {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .terminal-commands button {
+      background: rgba(61, 255, 154, 0.08);
+      border: 1px solid rgba(61, 255, 154, 0.2);
+      border-radius: 999px;
+      padding: 6px 14px;
+      color: var(--card-foreground);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .terminal-commands button:hover {
+      background: rgba(61, 255, 154, 0.18);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .command-panel {
+      gap: 0;
+    }
+
+    .command-display {
+      padding: 8px 24px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      color: var(--card-foreground);
+      text-align: center;
+    }
+
+    .command-display span {
+      font-size: 1.05rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .command-display small {
+      color: var(--muted-foreground);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .command-actions {
+      padding: 0 24px 24px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: center;
+    }
+
+    .interface-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 24px;
+      border-radius: var(--radius);
+      border: 1px solid rgba(61, 255, 154, 0.25);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: rgba(61, 255, 154, 0.12);
+      color: var(--card-foreground);
+      transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+    }
+
+    .interface-button.secondary {
+      background: rgba(61, 255, 154, 0.05);
+    }
+
+    .interface-button:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-sm);
+      background: rgba(61, 255, 154, 0.2);
+    }
+
+    .chart-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      padding: 0 24px 24px;
+      flex: 1;
+    }
+
+    .chart-card {
+      background: rgba(2, 14, 10, 0.85);
+      border: 1px solid rgba(61, 255, 154, 0.15);
+      border-radius: calc(var(--radius) - 0.4rem);
+      padding: 18px;
+      box-shadow: inset 0 0 18px rgba(6, 48, 34, 0.55);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .chart-card-header {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      color: var(--card-foreground);
+    }
+
+    .chart-card-header h3 {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.1rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin: 0;
+    }
+
+    .chart-slider {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--muted-foreground);
+      font-size: 0.85rem;
+    }
+
+    .chart-slider input[type="range"] {
+      flex: 1;
+      min-width: 160px;
+    }
+
+    .chart-container {
+      position: relative;
+      height: 260px;
+    }
+
+    .status-panel {
+      gap: 0;
+    }
+
+    .status-section {
+      padding: 12px 24px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      border-bottom: 1px solid rgba(61, 255, 154, 0.12);
+    }
+
+    .status-section:last-of-type {
+      border-bottom: none;
+    }
+
+    .status-section h4 {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted-foreground);
+      margin: 0;
+    }
+
+    .status-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      letter-spacing: 0.05em;
+    }
+
+    .status-item .value {
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .status-meter {
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(61, 255, 154, 0.12);
+      overflow: hidden;
+    }
+
+    .status-meter span {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, rgba(61, 255, 154, 0.6), rgba(61, 255, 154, 1));
+      border-radius: inherit;
+    }
+
+    .automation-form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .automation-form .form-check {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .automation-form label.form-label {
+      font-size: 0.85rem;
+      letter-spacing: 0.05em;
+      color: var(--muted-foreground);
+      text-transform: uppercase;
+    }
+
+    .process-panel .panel-body {
+      padding-top: 16px;
+      overflow-x: auto;
+    }
+
+    .process-panel table {
+      color: var(--card-foreground);
+      background: transparent;
+    }
+
+    .process-panel thead th {
+      border-bottom: 1px solid rgba(61, 255, 154, 0.2);
+      color: var(--primary);
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 0.08em;
+    }
+
+    .process-panel tbody tr {
+      border-top: 1px solid rgba(61, 255, 154, 0.08);
+    }
+
+    .action-icon {
+      cursor: pointer;
+      margin: 0 6px;
+      transition: transform 0.2s ease, color 0.2s ease;
+    }
+
+    .action-icon:hover {
+      transform: scale(1.1);
+      color: var(--primary);
+    }
+
+    .mainframe-footer {
+      text-align: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted-foreground);
+      padding: 16px 8px 0;
+      border-top: 1px solid rgba(61, 255, 154, 0.1);
+    }
+
+    .mainframe-footer span {
+      display: block;
     }
 
     /* CRT Screen Effect */
@@ -636,18 +1009,38 @@
     }
 
     /* Responsive Improvements */
-    @media (max-width: 768px) {
-      .hero-section {
-        padding: 24px;
+    @media (max-width: 1200px) {
+      .mainframe-grid {
+        grid-template-columns: 1fr;
       }
 
-      .metric-card {
-        margin: 8px 0;
-        min-width: 100%;
+      .header-actions {
+        width: 100%;
+        justify-content: flex-start;
+      }
+    }
+
+    @media (max-width: 768px) {
+      body {
+        padding: 32px 16px 64px;
+      }
+
+      .mainframe-shell {
+        gap: 20px;
+      }
+
+      .command-actions {
+        justify-content: flex-start;
       }
 
       .chart-container {
-        height: 300px;
+        height: 220px;
+      }
+
+      .panel-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
       }
     }
 
@@ -694,123 +1087,177 @@
   </style>
 </head>
 <body class="crt-screen">
-  <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
-    <div class="container">
-      <a class="navbar-brand" href="#">
-        <img src="/static/images/logo.png" alt="3270Connect Logo" width="30" class="d-inline-block align-top">
-        3270Connect
-      </a>
-      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-        <span class="navbar-toggler-icon"></span>
-      </button>
-      <div class="collapse navbar-collapse" id="navbarNav">
-        <ul class="navbar-nav ms-auto">
-          <li class="nav-item me-2">
-            <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#consoleModal" data-tippy-content="Show the Console Logs">
-              Console Logs
-            </button>
-          </li>
-          <li class="nav-item">
-            <button class="btn btn-light" onclick="location.reload();" data-tippy-content="Refresh the Page">
-              <i class="fas fa-sync-alt"></i>
-            </button>
-          </li>
-        </ul>
+  <div class="mainframe-shell">
+    <header class="mainframe-header">
+      <div class="header-titles">
+        <p class="header-eyebrow">Secure Terminal Access · Secret location somewhere in West Yorkshire · Hyperfocus Protocol Active</p>
+        <h1>Yorkshire Mainframe System<span class="cursor">█</span></h1>
+        <p class="header-subtext">Authenticated session · Monitoring legacy workflows in real time</p>
       </div>
-    </div>
-  </nav>
-  <div class="container my-4">
-    <div class="hero-section">
-      <div class="container-fluid">
-        <h1 class="display-4" data-tippy-content="This section displays aggregated metrics for all workflows.">3270Connect Dashboard<span class="cursor">█</span></h1>
-        <p class="subtitle" data-tippy-content="Metrics are grouped by Process ID (PID).">Real-time Workflow Monitoring & Management</p>
-        <div class="d-flex flex-wrap justify-content-around mt-4">
-          <div class="metric-card active" data-tippy-content="Number of workflows currently running.">
-            <h5>Active Workflows</h5>
-            <p class="metric-value">{{.ActiveWorkflows}}</p>
-          </div>
-          <div class="metric-card started" data-tippy-content="Total number of workflows that have been started.">
-            <h5>Total Started</h5>
-            <p class="metric-value">{{.TotalWorkflowsStarted}}</p>
-          </div>
-          <div class="metric-card completed" data-tippy-content="Total number of workflows that have completed successfully.">
-            <h5>Completed</h5>
-            <p class="metric-value">{{.TotalWorkflowsCompleted}}</p>
-          </div>
-          <div class="metric-card failed" data-tippy-content="Total number of workflows that have failed.">
-            <h5>Failed</h5>
-            <p class="metric-value">{{.TotalWorkflowsFailed}}</p>
+      <div class="header-actions">
+        <button class="neon-button" data-bs-toggle="modal" data-bs-target="#consoleModal" data-tippy-content="Show the console logs">
+          <i class="fas fa-terminal"></i>
+          Console Logs
+        </button>
+        <button class="neon-button ghost" type="button" onclick="location.reload();" data-tippy-content="Refresh the page">
+          <i class="fas fa-sync-alt"></i>
+          Refresh
+        </button>
+      </div>
+    </header>
+
+    <main class="mainframe-grid">
+      <section class="panel terminal-panel">
+        <div class="panel-header">
+          <span>&gt;_ Terminal</span>
+          <div class="status-lights">
+            <span class="light red"></span>
+            <span class="light amber"></span>
+            <span class="light green"></span>
           </div>
         </div>
-        <div class="settings-card">
-          <form id="autoRefreshForm" method="get">
-            <div class="row align-items-center">
-              <div class="col-md-6">
-                <div class="form-check form-switch">
-                  <input class="form-check-input" type="checkbox" id="autoRefreshToggle" name="autoRefresh" value="true" {{.Checked}} onchange="this.form.submit()">
-                  <label class="form-check-label" for="autoRefreshToggle">Auto Refresh</label>
-                </div>
+        <div class="panel-body terminal-body">
+          <p class="terminal-line accent">YORKSHIRE MAINFRAME TERMINAL v2.1.7</p>
+          <p class="terminal-line">Initializing secure connection...</p>
+          <p class="terminal-line">Authentication: <span class="success">OK</span></p>
+          <p class="terminal-line">Location: <span class="muted">[CLASSIFIED] · West Yorkshire</span></p>
+          <p class="terminal-line">Status: Hyperfocus mode active</p>
+          <p class="terminal-line">Active workflows: <span class="numeric">{{.ActiveWorkflows}}</span></p>
+          <p class="terminal-line">Completed workflows: <span class="numeric">{{.TotalWorkflowsCompleted}}</span></p>
+          <div class="terminal-divider"></div>
+          <p class="terminal-prompt">$ Type a command...</p>
+          <div class="terminal-commands">
+            <button type="button">help</button>
+            <button type="button">about</button>
+            <button type="button">projects</button>
+            <button type="button">skills</button>
+            <button type="button">contact</button>
+            <button type="button">games</button>
+            <button type="button">yorkshire</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel command-panel">
+        <div class="panel-header">
+          <span>System Interface</span>
+          <span class="panel-subtext">Neurodivergent mode: Active</span>
+        </div>
+        <div class="command-display">
+          <span>Execute a command to display system information</span>
+          <small>Type 'help' for available commands.</small>
+        </div>
+        <div class="command-actions">
+          <button class="interface-button" type="button" data-bs-toggle="modal" data-bs-target="#startProcessModal" data-tippy-content="Start a new 3270Connect process">
+            <i class="fas fa-rocket"></i>
+            Start Process
+          </button>
+          <button class="interface-button secondary" type="button" data-bs-toggle="modal" data-bs-target="#startAppModal" data-tippy-content="Launch a sample 3270 app">
+            <i class="fas fa-server"></i>
+            Start App
+          </button>
+        </div>
+        <div class="chart-grid">
+          <div class="chart-card" data-tippy-content="Workflow duration over time.">
+            <div class="chart-card-header">
+              <h3><i class="fas fa-clock me-2"></i> Workflow Duration</h3>
+              <div class="chart-slider">
+                <span>Show last <span id="durationDataPointsValue">30</span> data points</span>
+                <input type="range" class="form-range" id="durationDataPoints" min="10" max="100" value="30" step="5">
               </div>
-              <div class="col-md-6">
-                <div class="d-flex align-items-center gap-2">
-                  <label for="refreshPeriodSelect" class="form-label mb-0">Refresh Period:</label>
-                  <select class="form-select w-auto" id="refreshPeriodSelect" name="refreshPeriod" onchange="this.form.submit()">
-                    <option value="1" {{.Sel1}}>1s</option>
-                    <option value="5" {{.Sel5}}>5s</option>
-                    <option value="10" {{.Sel10}}>10s</option>
-                    <option value="15" {{.Sel15}}>15s</option>
-                    <option value="30" {{.Sel30}}>30s</option>
-                  </select>
-                </div>
+            </div>
+            <div class="chart-container">
+              <canvas id="durationChart"></canvas>
+            </div>
+          </div>
+          <div class="chart-card" data-tippy-content="CPU and memory utilisation.">
+            <div class="chart-card-header">
+              <h3><i class="fas fa-chart-line me-2"></i> System Resources</h3>
+              <div class="chart-slider">
+                <span>Show last <span id="resourcesDataPointsValue">30</span> data points</span>
+                <input type="range" class="form-range" id="resourcesDataPoints" min="10" max="100" value="30" step="5">
               </div>
+            </div>
+            <div class="chart-container">
+              <canvas id="cpuMemChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel status-panel">
+        <div class="panel-header">
+          <span>System Monitor</span>
+          <span class="panel-subtext">Deep work hours</span>
+        </div>
+        <div class="status-section">
+          <div class="status-item">
+            <span>CPU Usage</span>
+            <span class="value"><span id="cpuUsageValue">--</span>%</span>
+          </div>
+          <div class="status-meter"><span id="cpuUsageBar" style="width: 0%;"></span></div>
+          <div class="status-item">
+            <span>Memory Usage</span>
+            <span class="value"><span id="memoryUsageValue">--</span>%</span>
+          </div>
+          <div class="status-meter"><span id="memoryUsageBar" style="width: 0%;"></span></div>
+        </div>
+        <div class="status-section">
+          <h4>Workflow Health</h4>
+          <div class="status-item">
+            <span>Active</span>
+            <span class="value">{{.ActiveWorkflows}}</span>
+          </div>
+          <div class="status-item">
+            <span>Started</span>
+            <span class="value">{{.TotalWorkflowsStarted}}</span>
+          </div>
+          <div class="status-item">
+            <span>Completed</span>
+            <span class="value">{{.TotalWorkflowsCompleted}}</span>
+          </div>
+          <div class="status-item">
+            <span>Failed</span>
+            <span class="value">{{.TotalWorkflowsFailed}}</span>
+          </div>
+        </div>
+        <div class="status-section">
+          <h4>Automation</h4>
+          <form id="autoRefreshForm" method="get" class="automation-form">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="autoRefreshToggle" name="autoRefresh" value="true" {{.Checked}} onchange="this.form.submit()">
+              <label class="form-check-label" for="autoRefreshToggle">Auto Refresh</label>
+            </div>
+            <div>
+              <label for="refreshPeriodSelect" class="form-label">Refresh Period</label>
+              <select class="form-select" id="refreshPeriodSelect" name="refreshPeriod" onchange="this.form.submit()">
+                <option value="1" {{.Sel1}}>1s</option>
+                <option value="5" {{.Sel5}}>5s</option>
+                <option value="10" {{.Sel10}}>10s</option>
+                <option value="15" {{.Sel15}}>15s</option>
+                <option value="30" {{.Sel30}}>30s</option>
+              </select>
             </div>
           </form>
         </div>
+      </section>
+    </main>
+
+    <section class="panel process-panel">
+      <div class="panel-header">
+        <span>Process Intelligence</span>
+        <span class="panel-subtext">Live PID overview</span>
       </div>
-    </div>
-    <div class="row">
-      <div class="col-md-6">
-        <div class="chart-wrapper" data-tippy-content="This chart shows the duration of workflows over time.">
-          <h3><i class="fas fa-clock"></i> Workflow Duration</h3>
-          <div class="mb-3">
-            <label for="durationDataPoints" class="form-label">Show last <span id="durationDataPointsValue">30</span> data points</label>
-            <input type="range" class="form-range" id="durationDataPoints" min="10" max="100" value="30" step="5">
-          </div>
-          <div class="chart-container">
-            <canvas id="durationChart"></canvas>
-          </div>
-        </div>
+      <div class="panel-body">
+        <div id="pidParamsContainerOnDashboard"></div>
       </div>
-      <div class="col-md-6">
-        <div class="chart-wrapper" data-tippy-content="This chart shows CPU and memory usage over time.">
-          <h3><i class="fas fa-chart-line"></i> System Resources</h3>
-          <div class="mb-3">
-            <label for="resourcesDataPoints" class="form-label">Show last <span id="resourcesDataPointsValue">30</span> data points</label>
-            <input type="range" class="form-range" id="resourcesDataPoints" min="10" max="100" value="30" step="5">
-          </div>
-          <div class="chart-container">
-            <canvas id="cpuMemChart"></canvas>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="row mt-3">
-      <div class="col-md-12">
-        <div class="table-wrapper">
-          <div id="pidParamsContainerOnDashboard">
-            <!-- Table for process metrics will be rendered here -->
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="text-center mt-4">
-      <button class="btn btn-primary btn-lg me-2" data-bs-toggle="modal" data-bs-target="#startProcessModal" data-tippy-content="Click to start a new 3270Connect process.">
-        <i class="fas fa-rocket me-2"></i>Start 3270Connect Process
-      </button>
-      <button class="btn btn-success btn-lg" data-bs-toggle="modal" data-bs-target="#startAppModal" data-tippy-content="Click to start a sample 3270 app.">
-        <i class="fas fa-server me-2"></i>Start 3270 App
-      </button>
-    </div>
+    </section>
+
+    <footer class="mainframe-footer">
+      <span>Yorkshire Mainframe Terminal · Authenticated Session · Deep Work Mode</span>
+      <span>Session v{{.Version}} · &copy; {{.Year}} 3270Connect</span>
+      <span>"Where there's muck, there's brass." · "Where there's legacy code, there's opportunity."</span>
+    </footer>
   </div>
   <!-- Tooltip for notifications -->
   <div id="tooltipNotification" class="tooltip bs-tooltip-top" role="tooltip" style="position: fixed; top: 10px; right: 10px; z-index: 9999; display: none;">
@@ -962,16 +1409,6 @@
   </div>
 </div>
 
-  <footer class="bg-dark text-white fixed-bottom" style="color: var(--foreground) !important;">
-    <div class="container text-center py-2">
-      <div>
-      &copy; {{.Year}} 3270Connect. All rights reserved. v{{.Version }}
-      </div>
-      <div>
-      Made with ❤️ by <a href="https://eyup.io/" target="_blank" rel="noopener noreferrer">EyUp</a>
-      </div>
-    </div>
-  </footer>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
   var autoRefreshEnabled = {{.AutoRefreshEnabled}};
@@ -1156,6 +1593,39 @@
     var maxLen = Math.max(aggregatedCPU.length, hostMemory.length);
     var labels2 = [];
     for (var i = 0; i < maxLen; i++) { labels2.push(" " + (i + 1)); }
+
+    function updateSystemMonitor(cpuSeries, memorySeries) {
+      var cpuValueNode = document.getElementById("cpuUsageValue");
+      var memoryValueNode = document.getElementById("memoryUsageValue");
+      var cpuBar = document.getElementById("cpuUsageBar");
+      var memoryBar = document.getElementById("memoryUsageBar");
+
+      if (cpuValueNode) {
+        var cpuValue = cpuSeries.length ? cpuSeries[cpuSeries.length - 1] : null;
+        if (cpuValue === null || typeof cpuValue === 'undefined' || isNaN(cpuValue)) {
+          cpuValueNode.textContent = '--';
+          if (cpuBar) { cpuBar.style.width = '0%'; }
+        } else {
+          var clampedCpu = Math.max(0, Math.min(100, cpuValue));
+          cpuValueNode.textContent = clampedCpu.toFixed(2);
+          if (cpuBar) { cpuBar.style.width = clampedCpu.toFixed(2) + '%'; }
+        }
+      }
+
+      if (memoryValueNode) {
+        var memoryValue = memorySeries.length ? memorySeries[memorySeries.length - 1] : null;
+        if (memoryValue === null || typeof memoryValue === 'undefined' || isNaN(memoryValue)) {
+          memoryValueNode.textContent = '--';
+          if (memoryBar) { memoryBar.style.width = '0%'; }
+        } else {
+          var clampedMemory = Math.max(0, Math.min(100, memoryValue));
+          memoryValueNode.textContent = clampedMemory.toFixed(2);
+          if (memoryBar) { memoryBar.style.width = clampedMemory.toFixed(2) + '%'; }
+        }
+      }
+    }
+
+    updateSystemMonitor(aggregatedCPU, hostMemory);
     
     function buildResourceData(dataPointLimit) {
       var limitedLabels = labels2.slice(-dataPointLimit);
