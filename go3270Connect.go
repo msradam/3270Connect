@@ -1792,15 +1792,63 @@ func startProcessHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	tempFilePath := filepath.Join(os.TempDir(), handler.Filename)
-	tempFile, err := os.Create(tempFilePath)
+	fileBytes, err := io.ReadAll(file)
 	if err != nil {
-		http.Error(w, "Failed to save file", http.StatusInternalServerError)
+		http.Error(w, "Failed to read configuration file", http.StatusInternalServerError)
 		return
 	}
-	defer tempFile.Close()
 
-	if _, err := io.Copy(tempFile, file); err != nil {
+	var config Configuration
+	if err := json.Unmarshal(fileBytes, &config); err != nil {
+		storeLog("Failed to parse configuration JSON: " + err.Error())
+		http.Error(w, "Invalid configuration file", http.StatusBadRequest)
+		return
+	}
+
+	if override := strings.TrimSpace(r.FormValue("overrideHost")); override != "" {
+		config.Host = override
+	}
+	if override := strings.TrimSpace(r.FormValue("overridePort")); override != "" {
+		portValue, convErr := strconv.Atoi(override)
+		if convErr != nil {
+			http.Error(w, "Invalid port override", http.StatusBadRequest)
+			return
+		}
+		config.Port = portValue
+	}
+	if override := strings.TrimSpace(r.FormValue("overrideOutputFilePath")); override != "" {
+		config.OutputFilePath = override
+	}
+	if override := strings.TrimSpace(r.FormValue("overrideRampUpBatchSize")); override != "" {
+		batchValue, convErr := strconv.Atoi(override)
+		if convErr != nil {
+			http.Error(w, "Invalid ramp up batch size override", http.StatusBadRequest)
+			return
+		}
+		config.RampUpBatchSize = batchValue
+	}
+	if override := strings.TrimSpace(r.FormValue("overrideRampUpDelay")); override != "" {
+		delayValue, convErr := strconv.ParseFloat(override, 64)
+		if convErr != nil {
+			http.Error(w, "Invalid ramp up delay override", http.StatusBadRequest)
+			return
+		}
+		config.RampUpDelay = delayValue
+	}
+
+	if err := validateConfiguration(&config); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	updatedJSON, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		http.Error(w, "Failed to serialize configuration", http.StatusInternalServerError)
+		return
+	}
+
+	tempFilePath := filepath.Join(os.TempDir(), handler.Filename)
+	if err := os.WriteFile(tempFilePath, updatedJSON, 0644); err != nil {
 		http.Error(w, "Failed to save file", http.StatusInternalServerError)
 		return
 	}

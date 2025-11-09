@@ -1501,6 +1501,36 @@
               <label for="configFileInput" class="form-label">Configuration File</label>
               <input type="file" class="form-control" id="configFileInput" name="configFile" accept=".json" required>
             </div>
+            <div id="configDetailsWrapper" class="mb-3 d-none">
+              <div class="p-3 mb-3 bg-dark text-success border rounded">
+                <div class="fw-bold text-info text-uppercase small mb-2">Workflow Metadata</div>
+                <dl class="row mb-0" id="configMetadata"></dl>
+              </div>
+              <label class="form-label">Configuration Preview</label>
+              <pre id="configPreview" class="bg-dark text-success p-3 rounded small" style="max-height: 260px; overflow: auto;"></pre>
+            </div>
+            <div class="row g-3 mb-3">
+              <div class="col-md-6">
+                <label for="overrideHostInput" class="form-label">Host Override</label>
+                <input type="text" class="form-control" id="overrideHostInput" name="overrideHost" placeholder="Leave blank to use file value">
+              </div>
+              <div class="col-md-6">
+                <label for="overridePortInput" class="form-label">Port Override</label>
+                <input type="number" class="form-control" id="overridePortInput" name="overridePort" placeholder="Leave blank to use file value" min="1">
+              </div>
+              <div class="col-md-6">
+                <label for="overrideOutputFilePathInput" class="form-label">Output File Override</label>
+                <input type="text" class="form-control" id="overrideOutputFilePathInput" name="overrideOutputFilePath" placeholder="Leave blank to use file value">
+              </div>
+              <div class="col-md-6">
+                <label for="overrideRampUpBatchSizeInput" class="form-label">Ramp Up Batch Size Override</label>
+                <input type="number" class="form-control" id="overrideRampUpBatchSizeInput" name="overrideRampUpBatchSize" placeholder="Leave blank to use file value" min="1">
+              </div>
+              <div class="col-md-6">
+                <label for="overrideRampUpDelayInput" class="form-label">Ramp Up Delay Override (seconds)</label>
+                <input type="number" class="form-control" id="overrideRampUpDelayInput" name="overrideRampUpDelay" placeholder="Leave blank to use file value" min="0" step="0.1">
+              </div>
+            </div>
           <div class="mb-3">
             <label for="injectionConfigInput" class="form-label">Injection Config File (Optional)</label>
             <input type="file" class="form-control" id="injectionConfigInput" name="injectionConfig" accept=".json">
@@ -2163,6 +2193,135 @@
     loadLogs();
   }
 
+  var configFileInputControl = document.getElementById("configFileInput");
+  if (configFileInputControl) {
+    configFileInputControl.addEventListener("change", handleConfigFileSelection);
+  }
+
+  function handleConfigFileSelection(event) {
+    resetConfigDetails();
+    var file = event && event.target && event.target.files ? event.target.files[0] : null;
+    if (!file) {
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function(loadEvent) {
+      var text = loadEvent.target ? loadEvent.target.result : "";
+      var preview = document.getElementById("configPreview");
+      if (preview) {
+        preview.textContent = typeof text === "string" ? text : "";
+      }
+      var wrapper = document.getElementById("configDetailsWrapper");
+      if (wrapper) {
+        wrapper.classList.remove("d-none");
+      }
+      try {
+        var parsed = JSON.parse(text);
+        showConfigMetadata(parsed);
+        setOverrideValue("overrideHostInput", parsed && parsed.Host !== undefined ? parsed.Host : "");
+        setOverrideValue("overridePortInput", parsed && parsed.Port !== undefined ? parsed.Port : "");
+        setOverrideValue("overrideOutputFilePathInput", parsed && parsed.OutputFilePath !== undefined ? parsed.OutputFilePath : "");
+        setOverrideValue("overrideRampUpBatchSizeInput", parsed && parsed.RampUpBatchSize !== undefined ? parsed.RampUpBatchSize : "");
+        setOverrideValue("overrideRampUpDelayInput", parsed && parsed.RampUpDelay !== undefined ? parsed.RampUpDelay : "");
+      } catch (err) {
+        var metadataList = document.getElementById("configMetadata");
+        if (metadataList) {
+          metadataList.innerHTML = '<dt class="col-12 text-danger">Failed to read configuration: ' + escapeHtml(err && err.message ? err.message : "Unknown error") + "</dt>";
+        }
+        setOverrideValue("overrideHostInput", "");
+        setOverrideValue("overridePortInput", "");
+        setOverrideValue("overrideOutputFilePathInput", "");
+        setOverrideValue("overrideRampUpBatchSizeInput", "");
+        setOverrideValue("overrideRampUpDelayInput", "");
+      }
+    };
+    reader.onerror = function() {
+      var wrapper = document.getElementById("configDetailsWrapper");
+      if (wrapper) {
+        wrapper.classList.remove("d-none");
+      }
+      var metadataList = document.getElementById("configMetadata");
+      if (metadataList) {
+        metadataList.innerHTML = '<dt class="col-12 text-danger">Failed to load configuration file.</dt>';
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function showConfigMetadata(configData) {
+    var metadataList = document.getElementById("configMetadata");
+    if (!metadataList) {
+      return;
+    }
+    var items = "";
+    items += buildMetadataRow("Host", configData ? configData.Host : "");
+    items += buildMetadataRow("Port", configData ? configData.Port : "");
+    items += buildMetadataRow("Output File", configData ? configData.OutputFilePath : "");
+    items += buildMetadataRow("Ramp Up Batch Size", configData ? configData.RampUpBatchSize : "");
+    items += buildMetadataRow("Ramp Up Delay", configData ? configData.RampUpDelay : "");
+    metadataList.innerHTML = items;
+  }
+
+  function buildMetadataRow(label, value) {
+    var safeValue = value === undefined || value === null || value === "" ? "-" : value;
+    return '<dt class="col-sm-5">' + escapeHtml(label) + '</dt><dd class="col-sm-7 text-break">' + escapeHtml(safeValue) + "</dd>";
+  }
+
+  function setOverrideValue(elementId, value) {
+    var input = document.getElementById(elementId);
+    if (!input) {
+      return;
+    }
+    if (value === undefined || value === null) {
+      input.value = "";
+      return;
+    }
+    input.value = value;
+  }
+
+  function resetConfigDetails() {
+    var wrapper = document.getElementById("configDetailsWrapper");
+    if (wrapper) {
+      wrapper.classList.add("d-none");
+    }
+    var metadataList = document.getElementById("configMetadata");
+    if (metadataList) {
+      metadataList.innerHTML = "";
+    }
+    var preview = document.getElementById("configPreview");
+    if (preview) {
+      preview.textContent = "";
+    }
+    setOverrideValue("overrideHostInput", "");
+    setOverrideValue("overridePortInput", "");
+    setOverrideValue("overrideOutputFilePathInput", "");
+    setOverrideValue("overrideRampUpBatchSizeInput", "");
+    setOverrideValue("overrideRampUpDelayInput", "");
+  }
+
+  function escapeHtml(value) {
+    if (value === undefined || value === null) {
+      return "";
+    }
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function appendOverrideField(formData, elementId, fieldName) {
+    var input = document.getElementById(elementId);
+    if (!input) {
+      return;
+    }
+    var value = typeof input.value === "string" ? input.value.trim() : "";
+    if (value !== "") {
+      formData.append(fieldName, value);
+    }
+  }
+
   function start3270ConnectProcess() {
     var errorsDiv = document.getElementById('processErrors');
     errorsDiv.innerHTML = '';
@@ -2194,6 +2353,11 @@
     formData.append("runtime", document.getElementById('runtimeInput').value);
     formData.append("startPort", document.getElementById('startPortInput').value);
     formData.append("headless", document.getElementById('headlessInput').checked ? "on" : "off");
+    appendOverrideField(formData, 'overrideHostInput', 'overrideHost');
+    appendOverrideField(formData, 'overridePortInput', 'overridePort');
+    appendOverrideField(formData, 'overrideOutputFilePathInput', 'overrideOutputFilePath');
+    appendOverrideField(formData, 'overrideRampUpBatchSizeInput', 'overrideRampUpBatchSize');
+    appendOverrideField(formData, 'overrideRampUpDelayInput', 'overrideRampUpDelay');
   
     fetch('/start-process', {
       method: 'POST',
