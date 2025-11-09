@@ -1193,6 +1193,7 @@ func runDashboard() {
 	// Register the start-process endpoint
 	http.HandleFunc("/start-process", startProcessHandler)
 	http.HandleFunc("/kill", killProcessHandler) // register kill endpoint
+	http.HandleFunc("/test-connection", testConnectionHandler)
 
 	addr := fmt.Sprintf("localhost:%d", dashboardPort) // Bind to localhost
 	listener, err := net.Listen("tcp", addr)
@@ -1908,6 +1909,57 @@ func startProcessHandler(w http.ResponseWriter, r *http.Request) {
 	storeLog("Process started successfully")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Process started successfully"))
+}
+
+func testConnectionHandler(w http.ResponseWriter, r *http.Request) {
+	storeLog("Received test connection request")
+	if r.Method != http.MethodPost {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	defer r.Body.Close()
+	var payload struct {
+		Host string `json:"host"`
+		Port int    `json:"port"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		storeLog("Failed to decode test connection payload: " + err.Error())
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		return
+	}
+
+	host := strings.TrimSpace(payload.Host)
+	if host == "" {
+		http.Error(w, "Host is required", http.StatusBadRequest)
+		return
+	}
+	if payload.Port <= 0 {
+		http.Error(w, "Port must be a positive integer", http.StatusBadRequest)
+		return
+	}
+
+	address := net.JoinHostPort(host, strconv.Itoa(payload.Port))
+	storeLog("Testing connectivity to " + address)
+	conn, err := net.DialTimeout("tcp", address, 5*time.Second)
+	if err != nil {
+		storeLog("Connection test failed for " + address + ": " + err.Error())
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":  "error",
+			"message": fmt.Sprintf("Unable to connect to %s: %v", address, err),
+		})
+		return
+	}
+	conn.Close()
+	storeLog("Connection test succeeded for " + address)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":  "ok",
+		"message": fmt.Sprintf("Successfully connected to %s", address),
+	})
 }
 
 func isTerminal() bool {

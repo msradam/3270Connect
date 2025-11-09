@@ -1530,6 +1530,11 @@
                 <label for="overrideRampUpDelayInput" class="form-label">Ramp Up Delay Override (seconds)</label>
                 <input type="number" class="form-control" id="overrideRampUpDelayInput" name="overrideRampUpDelay" placeholder="Leave blank to use file value" min="0" step="0.1">
               </div>
+              <div class="col-md-6 d-flex align-items-end">
+                <button type="button" class="btn btn-success w-100" id="testConnectionButton" onclick="testWorkflowConnection()" data-tippy-content="Verify connectivity to the configured host and port">
+                  <i class="fas fa-plug me-2"></i>Test Connection
+                </button>
+              </div>
             </div>
           <div class="mb-3">
             <label for="injectionConfigInput" class="form-label">Injection Config File (Optional)</label>
@@ -2193,6 +2198,7 @@
     loadLogs();
   }
 
+  var loadedConfigData = null;
   var configFileInputControl = document.getElementById("configFileInput");
   if (configFileInputControl) {
     configFileInputControl.addEventListener("change", handleConfigFileSelection);
@@ -2217,6 +2223,7 @@
       }
       try {
         var parsed = JSON.parse(text);
+        loadedConfigData = parsed;
         showConfigMetadata(parsed);
         setOverrideValue("overrideHostInput", parsed && parsed.Host !== undefined ? parsed.Host : "");
         setOverrideValue("overridePortInput", parsed && parsed.Port !== undefined ? parsed.Port : "");
@@ -2244,6 +2251,7 @@
       if (metadataList) {
         metadataList.innerHTML = '<dt class="col-12 text-danger">Failed to load configuration file.</dt>';
       }
+      loadedConfigData = null;
     };
     reader.readAsText(file);
   }
@@ -2292,6 +2300,7 @@
     if (preview) {
       preview.textContent = "";
     }
+    loadedConfigData = null;
     setOverrideValue("overrideHostInput", "");
     setOverrideValue("overridePortInput", "");
     setOverrideValue("overrideOutputFilePathInput", "");
@@ -2320,6 +2329,66 @@
     if (value !== "") {
       formData.append(fieldName, value);
     }
+  }
+
+  function testWorkflowConnection() {
+    var hostInput = document.getElementById('overrideHostInput');
+    var portInput = document.getElementById('overridePortInput');
+    var rawHost = hostInput && hostInput.value ? hostInput.value.trim() : "";
+    var rawPort = portInput && portInput.value ? portInput.value.trim() : "";
+
+    var hostToUse = rawHost !== "" ? rawHost : (loadedConfigData && loadedConfigData.Host ? String(loadedConfigData.Host) : "");
+    var portSource = rawPort !== "" ? rawPort : (loadedConfigData && typeof loadedConfigData.Port !== 'undefined' ? String(loadedConfigData.Port) : "");
+
+    if (hostToUse === "") {
+      toastr.error('Host is required to test the connection. Provide an override or load a configuration file.');
+      return;
+    }
+    if (portSource === "") {
+      toastr.error('Port is required to test the connection. Provide an override or load a configuration file.');
+      return;
+    }
+
+    var portNumber = Number(portSource);
+    if (!Number.isInteger(portNumber) || portNumber <= 0) {
+      toastr.error('Port must be a positive integer.');
+      return;
+    }
+
+    var button = document.getElementById('testConnectionButton');
+    if (button) {
+      button.disabled = true;
+      button.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Testing...';
+    }
+
+    fetch('/test-connection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host: hostToUse, port: portNumber })
+    })
+      .then(function(response) {
+        if (!response.ok) {
+          return response.json().then(function(data) {
+            var message = data && data.message ? data.message : 'Failed to test connection.';
+            throw new Error(message);
+          }).catch(function(err) {
+            throw err instanceof Error ? err : new Error('Failed to test connection.');
+          });
+        }
+        return response.json();
+      })
+      .then(function(data) {
+        toastr.success(data && data.message ? data.message : 'Connection successful.');
+      })
+      .catch(function(error) {
+        toastr.error(error && error.message ? error.message : 'Unable to connect to host.');
+      })
+      .finally(function() {
+        if (button) {
+          button.disabled = false;
+          button.innerHTML = '<i class="fas fa-plug me-2"></i>Test Connection';
+        }
+      });
   }
 
   function start3270ConnectProcess() {
