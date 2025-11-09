@@ -31,6 +31,7 @@ Here are the key features of 3270Connect:
 - Headless mode for running workflows without a graphical user interface.
 - Verbose mode for detailed output.
 - API mode for advanced automation.
+- Runtime RSA token injection using the `-token` flag or API `Token` property, keeping one-time passwords out of workflow files.
 - Running a 3270 sample application to assist with testing workflow features.
 
 ## Documentation

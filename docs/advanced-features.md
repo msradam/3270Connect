@@ -28,6 +28,7 @@ Body:
   "Host": "10.27.27.27",
   "Port": 3270,
   "HTMLFilePath": "output.html",
+  "Token": "123456",
   "Steps": [
     {
       "Type": "InitializeHTMLFile"
@@ -68,6 +69,12 @@ Body:
   ]
 }
 ```
+
+- `Token` (optional): provide a one-time RSA token that will be injected wherever the workflow text contains `{{token}}`.
+
+!!! note
+
+  The Start Process modal on the dashboard now includes a dedicated **RSA Token** field. Values supplied through the modal are forwarded to the API as the `Token` property, matching the `-token` flag used on the command line.
 
 ### API Mode with Docker
 

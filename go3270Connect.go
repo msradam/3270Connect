@@ -48,6 +48,7 @@ type Configuration struct {
 	Port            int
 	OutputFilePath  string `json:"OutputFilePath"`
 	Steps           []Step
+	Token           string  `json:"Token,omitempty"`
 	InputFilePath   string  `json:"InputFilePath"`
 	RampUpBatchSize int     `json:"RampUpBatchSize"`
 	RampUpDelay     float64 `json:"RampUpDelay"`
@@ -60,19 +61,36 @@ type Step struct {
 	Text        string
 }
 
+func resolveTokenPlaceholder(original, token string) string {
+	if !strings.Contains(original, "{{token}}") {
+		return original
+	}
+
+	if token == "" {
+		tokenWarningOnce.Do(func() {
+			pterm.Warning.Println("Placeholder {{token}} detected in workflow text, but no token value was supplied.")
+		})
+		return original
+	}
+
+	return strings.ReplaceAll(original, "{{token}}", token)
+}
+
 var (
-	configFile      string
-	injectionConfig string
-	showHelp        bool
-	runAPI          bool
-	apiPort         int
-	concurrent      int
-	headless        bool
-	verbose         bool
-	runApp          string
-	runtimeDuration int
-	lastUsedPort    int
-	startPort       int
+	configFile       string
+	injectionConfig  string
+	rsaToken         string
+	showHelp         bool
+	runAPI           bool
+	apiPort          int
+	concurrent       int
+	headless         bool
+	verbose          bool
+	runApp           string
+	runtimeDuration  int
+	lastUsedPort     int
+	startPort        int
+	tokenWarningOnce sync.Once
 )
 
 var dashboardStarted bool
@@ -121,6 +139,7 @@ var programStart time.Time
 func init() {
 	flag.StringVar(&configFile, "config", "workflow.json", "Path to the configuration file")
 	flag.StringVar(&injectionConfig, "injectionConfig", "", "Path to the injection configuration file")
+	flag.StringVar(&rsaToken, "token", "", "RSA token value to substitute for {{token}} placeholders")
 	flag.BoolVar(&showHelp, "help", false, "Show usage information")
 	flag.BoolVar(&runAPI, "api", false, "Run as API")
 	flag.IntVar(&apiPort, "api-port", 8080, "API port")
@@ -423,7 +442,7 @@ func runWorkflow(scriptPort int, config *Configuration) error {
 		if workflowFailed {
 			break
 		}
-		err := executeStep(e, step, tmpFileName)
+		err := executeStep(e, step, tmpFileName, config.Token)
 		if err != nil {
 			workflowFailed = true
 			addError(err)
@@ -476,6 +495,9 @@ func runAPIWorkflow() {
 			sendErrorResponse(c, http.StatusBadRequest, "Invalid request payload - JSON’s drunk", err)
 			return
 		}
+		if workflowConfig.Token == "" && rsaToken != "" {
+			workflowConfig.Token = rsaToken
+		}
 		tmpFile, err := ioutil.TempFile("", "workflowOutput_")
 		if err != nil {
 			pterm.Error.Println("Temp file creation failed - disk’s napping:", err)
@@ -492,7 +514,7 @@ func runAPIWorkflow() {
 			return
 		}
 		for _, step := range workflowConfig.Steps {
-			if err := executeStep(e, step, tmpFileName); err != nil {
+			if err := executeStep(e, step, tmpFileName, workflowConfig.Token); err != nil {
 				sendErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Step '%s' failed - oof", step.Type), err)
 				e.Disconnect()
 				return
@@ -518,20 +540,29 @@ func runAPIWorkflow() {
 	}
 }
 
-func executeStep(e *connect3270.Emulator, step Step, tmpFileName string) error {
+func executeStep(e *connect3270.Emulator, step Step, tmpFileName string, token string) error {
 	switch step.Type {
 	case "InitializeOutput":
 		return e.InitializeOutput(tmpFileName, runAPI)
 	case "Connect":
 		return e.Connect()
 	case "CheckValue":
-		_, err := e.GetValue(step.Coordinates.Row, step.Coordinates.Column, step.Coordinates.Length)
-		return err
-	case "FillString":
-		if step.Coordinates.Row == 0 && step.Coordinates.Column == 0 {
-			return e.SetString(step.Text)
+		expected := resolveTokenPlaceholder(step.Text, token)
+		value, err := e.GetValue(step.Coordinates.Row, step.Coordinates.Column, step.Coordinates.Length)
+		if err != nil {
+			return err
 		}
-		return e.FillString(step.Coordinates.Row, step.Coordinates.Column, step.Text)
+		value = strings.TrimSpace(value)
+		if value != strings.TrimSpace(expected) {
+			return fmt.Errorf("CheckValue failed. Expected: %s, Found: %s", expected, value)
+		}
+		return nil
+	case "FillString":
+		text := resolveTokenPlaceholder(step.Text, token)
+		if step.Coordinates.Row == 0 && step.Coordinates.Column == 0 {
+			return e.SetString(text)
+		}
+		return e.FillString(step.Coordinates.Row, step.Coordinates.Column, text)
 	case "AsciiScreenGrab":
 		return e.AsciiScreenGrab(tmpFileName, runAPI)
 	case "PressEnter":
@@ -703,6 +734,9 @@ func main() {
 	}
 
 	config := loadConfiguration(configFile)
+	if rsaToken != "" {
+		config.Token = rsaToken
+	}
 	if runAPI {
 		runAPIWorkflow()
 	} else {

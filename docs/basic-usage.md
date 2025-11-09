@@ -11,6 +11,17 @@ To run a workflow, use the following command:
 ```
 
 - `-config`: Specifies the path to the configuration file (default is "workflow.json").
+- `-token`: Provides a one-time RSA token that replaces any `{{token}}` placeholder in workflow step text during execution.
+
+### Injecting a runtime RSA token
+
+Workflows can reference a transient RSA token by placing `{{token}}` in any `Text` field. Supply the token when launching 3270Connect:
+
+```bash
+3270Connect -config workflow.json -token 123456
+```
+
+The placeholder will be substituted immediately before each step runs, ensuring the token is never stored in the workflow file.
 
 ## Running Workflows
 

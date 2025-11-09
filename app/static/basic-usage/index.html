@@ -544,7 +544,12 @@
 </code></pre></div>
 <ul>
 <li><code>-config</code>: Specifies the path to the configuration file (default is "workflow.json").</li>
+<li><code>-token</code>: Provides a one-time RSA token that replaces any <code>{{token}}</code> placeholder in workflow step text during execution.</li>
 </ul>
+<h3 id="injecting-a-runtime-rsa-token">Injecting a runtime RSA token</h3>
+<p>Workflows can reference a transient RSA token by placing <code>{{token}}</code> in any <code>Text</code> field. Supply the token when launching 3270Connect:</p>
+<div class="highlight"><pre><span></span><code>3270Connect<span class="w"> </span>-config<span class="w"> </span>workflow.json<span class="w"> </span>-token<span class="w"> </span>123456</code></pre></div>
+<p>The placeholder will be substituted immediately before each step runs, ensuring the token is never stored in the workflow file.</p>
 <h2 id="running-workflows">Running Workflows</h2>
 <h3 id="single-workflow">Single Workflow</h3>
 <p>To run a single workflow, create a JSON configuration file that describes the workflow steps. Here's an example configuration file:</p>
