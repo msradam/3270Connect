@@ -1912,34 +1912,44 @@ func startProcessHandler(w http.ResponseWriter, r *http.Request) {
 	runtime := r.FormValue("runtime")
 	startPort := r.FormValue("startPort")
 	headless := r.FormValue("headless") == "on" // use "on" for checked
+	tokenValue := strings.TrimSpace(r.FormValue("token"))
 
-	// Construct the command for normal workflow
-	command := fmt.Sprintf("./3270Connect -config %s -concurrent %s -runtime %s -startPort %s",
-		tempFilePath, concurrent, runtime, startPort)
+	commandArgs := []string{
+		"./3270Connect",
+		"-config", tempFilePath,
+		"-concurrent", concurrent,
+		"-runtime", runtime,
+		"-startPort", startPort,
+	}
 	if headless {
-		command += " -headless"
+		commandArgs = append(commandArgs, "-headless")
 	}
-
 	if injectionConfigPath != "" {
-		command += fmt.Sprintf(" -injectionConfig %s", injectionConfigPath)
+		commandArgs = append(commandArgs, "-injectionConfig", injectionConfigPath)
+	}
+	if tokenValue != "" {
+		commandArgs = append(commandArgs, "-token", tokenValue)
 	}
 
-	storeLog("Command to execute: " + command)
-	go func() {
-		pterm.Info.Printf("Executing command: %s\n", command)
+	maskedArgs := make([]string, len(commandArgs))
+	copy(maskedArgs, commandArgs)
+	for i := 0; i < len(maskedArgs); i++ {
+		if maskedArgs[i] == "-token" && i+1 < len(maskedArgs) {
+			maskedArgs[i+1] = "[REDACTED]"
+		}
+	}
+	commandForLog := strings.Join(maskedArgs, " ")
+	storeLog("Command to execute: " + commandForLog)
+	go func(args []string, logCommand string) {
+		pterm.Info.Printf("Executing command: %s\n", logCommand)
 
-		// Adjust command for Windows
-		commandParts := strings.Fields(command)
-		executable := commandParts[0]
-		args := commandParts[1:]
-
-		cmd := exec.Command(executable, args...)
+		cmd := exec.Command(args[0], args[1:]...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
 			pterm.Error.Printf("Failed to execute command: %v\n", err)
 		}
-	}()
+	}(commandArgs, commandForLog)
 	storeLog("Process started successfully")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Process started successfully"))

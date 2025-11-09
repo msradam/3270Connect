@@ -1664,6 +1664,11 @@
             <input type="file" class="form-control" id="injectionConfigInput" name="injectionConfig" accept=".json">
           </div>
             <div class="mb-3">
+              <label for="tokenInput" class="form-label">RSA Token (Optional)</label>
+              <input type="text" class="form-control" id="tokenInput" name="token" inputmode="numeric" autocomplete="one-time-code" placeholder="123456">
+              <div class="form-text">Replaces any <code>{{"{{"}}token{{"}}"}}</code> placeholders right before execution.</div>
+            </div>
+            <div class="mb-3">
               <label for="concurrentInput" class="form-label">Concurrent Workflows</label>
               <input type="number" class="form-control" id="concurrentInput" name="concurrent" placeholder="Enter number of concurrent workflows" value="5" required>
             </div>
@@ -2561,6 +2566,10 @@
     formData.append("runtime", document.getElementById('runtimeInput').value);
     formData.append("startPort", document.getElementById('startPortInput').value);
     formData.append("headless", document.getElementById('headlessInput').checked ? "on" : "off");
+    var tokenInput = document.getElementById('tokenInput');
+    if (tokenInput && tokenInput.value.trim() !== "") {
+      formData.append("token", tokenInput.value.trim());
+    }
     appendOverrideField(formData, 'overrideHostInput', 'overrideHost');
     appendOverrideField(formData, 'overridePortInput', 'overridePort');
     appendOverrideField(formData, 'overrideOutputFilePathInput', 'overrideOutputFilePath');

@@ -1,0 +1,76 @@
+<html><head><title>ASCII Screen Capture</title></head><body><h1>ASCII Screen Capture</h1><p>Run Date and Time: 2025-11-09 15:51:57</p><pre>                            3270 Example Application                            
+                                                                                
+ Welcome to the go3270 example application. Please enter your name.             
+                                                                                
+ First Name  . . .                                                              
+ Last Name . . . .                                                              
+ Password  . . . .                                                              
+                                                                                
+ Press enter to submit your name.                                               
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+ PF3 Exit                                                                       
+                                                                                
+</pre>
+</body></html><pre>                            3270 Example Application                            
+                                                                                
+ Welcome to the go3270 example application. Please enter your name.             
+                                                                                
+ First Name  . . .  user1-firstname                                             
+ Last Name . . . .  user1-lastname                                              
+ Password  . . . .                                                              
+                                                                                
+ Press enter to submit your name.                                               
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+ PF3 Exit                                                                       
+                                                                                
+</pre>
+</body></html><pre>                            3270 Example Application                            
+                                                                                
+ Thank you for submitting your name. Here's what I know:                        
+                                                                                
+ Your first name is user1-firstname                                             
+ And your last name is user1-lastname                                           
+ Your password was 0 characters long                                            
+                                                                                
+ Press enter to enter your name again, or PF3 to quit and disconnect.           
+                                                                                
+                                                                                
+ Here is a field with extended attributes.                                      
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+ PF3 Exit                                                                       
+                                                                                
+</pre>
+</body></html>
