@@ -1297,7 +1297,7 @@ func runDashboard() {
 			if _, err := os.Stat(f); os.IsNotExist(err) {
 				continue
 			}
-			
+
 			data, err := ioutil.ReadFile(f)
 			if err != nil {
 				// File may have been deleted between Stat and ReadFile, silently continue
@@ -1391,7 +1391,7 @@ func runDashboard() {
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
-		
+
 		// Write the complete response at once
 		if _, err := buf.WriteTo(w); err != nil {
 			// Connection was closed by client, just log it without the scary message
@@ -1551,7 +1551,7 @@ func aggregateMetrics() Metrics {
 		if _, err := os.Stat(f); os.IsNotExist(err) {
 			continue
 		}
-		
+
 		data, err := ioutil.ReadFile(f)
 		if err != nil {
 			// File may have been deleted between Stat and ReadFile, silently continue
