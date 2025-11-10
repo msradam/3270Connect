@@ -1293,8 +1293,17 @@ func runDashboard() {
 		var metricsList []Metrics
 		var extendedList []ExtendedMetrics
 		for _, f := range files {
+			// Check if file exists before attempting to read it
+			if _, err := os.Stat(f); os.IsNotExist(err) {
+				continue
+			}
+
 			data, err := ioutil.ReadFile(f)
 			if err != nil {
+				// File may have been deleted between Stat and ReadFile, silently continue
+				if os.IsNotExist(err) {
+					continue
+				}
 				pterm.Warning.Printf("Error reading metrics file %s: %v\n", f, err)
 				continue
 			}
@@ -1373,10 +1382,23 @@ func runDashboard() {
 			ExtendedJSON:            string(extendedJSON),
 			Version:                 version, // Holds the value of the const `version`
 		}
-		if err := dashboardTemplate.Execute(w, data); err != nil {
-			pterm.Error.Printf("Dashboard template execution failed - HTML’s throwing a tantrum: %v\n", err)
-			// Note: Not calling http.Error() here as the response may have already been partially written
-			// The client will receive a partial/broken response, but we avoid the "superfluous response.WriteHeader" error
+		// Use a buffer to write the template output first, then write it all at once
+		// This prevents partial responses from being written if the connection closes
+		var buf bytes.Buffer
+		if err := dashboardTemplate.Execute(&buf, data); err != nil {
+			pterm.Error.Printf("Dashboard template execution failed - HTML's throwing a tantrum: %v\n", err)
+			// Only try to send error if we haven't written to the response yet
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		// Write the complete response at once
+		if _, err := buf.WriteTo(w); err != nil {
+			// Connection was closed by client, just log it without the scary message
+			// This is normal when browser refreshes or navigates away
+			if connect3270.Verbose {
+				pterm.Warning.Printf("Client closed connection during dashboard response: %v\n", err)
+			}
 		}
 	})
 	pterm.Info.Printf("Dashboard live at %s - check it out!\n", pterm.FgBlue.Sprintf("http://localhost:%d/dashboard", dashboardPort))
@@ -1525,8 +1547,17 @@ func aggregateMetrics() Metrics {
 	}
 	var agg Metrics
 	for _, f := range files {
+		// Check if file exists before attempting to read it
+		if _, err := os.Stat(f); os.IsNotExist(err) {
+			continue
+		}
+
 		data, err := ioutil.ReadFile(f)
 		if err != nil {
+			// File may have been deleted between Stat and ReadFile, silently continue
+			if os.IsNotExist(err) {
+				continue
+			}
 			pterm.Warning.Printf("Reading file %s failed: %v\n", f, err)
 			continue
 		}
