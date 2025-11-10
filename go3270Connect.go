@@ -1375,7 +1375,8 @@ func runDashboard() {
 		}
 		if err := dashboardTemplate.Execute(w, data); err != nil {
 			pterm.Error.Printf("Dashboard template execution failed - HTML’s throwing a tantrum: %v\n", err)
-			http.Error(w, "Internal Server Error: Failed to render dashboard", http.StatusInternalServerError)
+			// Note: Not calling http.Error() here as the response may have already been partially written
+			// The client will receive a partial/broken response, but we avoid the "superfluous response.WriteHeader" error
 		}
 	})
 	pterm.Info.Printf("Dashboard live at %s - check it out!\n", pterm.FgBlue.Sprintf("http://localhost:%d/dashboard", dashboardPort))
