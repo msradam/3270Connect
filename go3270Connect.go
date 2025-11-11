@@ -674,7 +674,6 @@ func LaunchEmbeddedIfDoubleClicked() {
 	storeLog("Starting dashboard mode - no terminal detected")
 	// Launch the embedded browser
 	openDashboardEmbedded()
-	return
 	//}
 }
 
@@ -949,43 +948,24 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 		}()
 	}
 
+	injectionCursor := 0
+
 	// Scheduling workflows using nested loops
 	for time.Since(overallStart) < time.Duration(runtimeDuration)*time.Second {
 		for time.Since(overallStart) < time.Duration(runtimeDuration)*time.Second {
-			freeSlots := concurrent - len(semaphore)
-			if freeSlots <= 0 {
+			currentActive := len(semaphore)
+			started := startWorkflowBatch(semaphore, config, &wg, injectData, &injectionCursor)
+			if started == 0 {
 				time.Sleep(time.Duration(config.RampUpDelay * float64(time.Second)))
 				break
 			}
-			batchSize := min(freeSlots, config.RampUpBatchSize)
 			storeLog(fmt.Sprintf("Increasing batch by %d, current size is %d, new total target is %d",
-				batchSize, len(semaphore), len(semaphore)+batchSize))
+				started, currentActive, currentActive+started))
 			if !enableProgressBar {
 				pterm.Info.Println(fmt.Sprintf("Increasing batch by %d, current size is %d, new total target is %d",
-					batchSize, len(semaphore), len(semaphore)+batchSize))
+					started, currentActive, currentActive+started))
 			}
 
-			for i := 0; i < batchSize; i++ {
-				semaphore <- struct{}{}
-				wg.Add(1)
-
-				// Cycle through the injection data using modulo
-				injection := injectData[i%len(injectData)]
-				userConfig := injectDynamicValues(config, injection)
-
-				go func(userConfig *Configuration) {
-					defer wg.Done()
-					portToUse := getNextAvailablePort()
-					err := runWorkflow(portToUse, userConfig)
-					if err != nil {
-						if connect3270.Verbose {
-							pterm.Error.Printf("Workflow on port %d error: %v\n", portToUse, err)
-						}
-						storeLog(fmt.Sprintf("Workflow on port %d error: %v", portToUse, err))
-					}
-					<-semaphore
-				}(userConfig)
-			}
 			cpuPercent, _ := cpu.Percent(0, false)
 			memStats, _ := mem.VirtualMemory()
 			storeLog(fmt.Sprintf("Currently active workflows: %d, CPU usage: %.2f%%, memory usage: %.2f%%",
@@ -1102,6 +1082,70 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 	// Note: If you already print the dashboard message in main, you might remove this duplicate.
 	storeLog("All workflows completed")
 	updateMetricsFile()
+}
+
+func startWorkflowBatch(
+	semaphore chan struct{},
+	baseConfig *Configuration,
+	wg *sync.WaitGroup,
+	injectData []map[string]string,
+	injectionCursor *int,
+) int {
+	mutex.Lock()
+	availableSlots := concurrent - activeWorkflows
+	if availableSlots <= 0 {
+		mutex.Unlock()
+		return 0
+	}
+	workflowsToStart := min(baseConfig.RampUpBatchSize, availableSlots)
+	mutex.Unlock()
+
+	if workflowsToStart <= 0 {
+		return 0
+	}
+
+	for i := 0; i < workflowsToStart; i++ {
+		semaphore <- struct{}{}
+		wg.Add(1)
+
+		var injection map[string]string
+		if len(injectData) > 0 {
+			idx := 0
+			if injectionCursor != nil {
+				idx = *injectionCursor % len(injectData)
+				*injectionCursor++
+			}
+			injection = injectData[idx]
+		} else {
+			injection = map[string]string{}
+		}
+
+		userConfig := injectDynamicValues(baseConfig, injection)
+
+		go func(cfg *Configuration) {
+			defer func() {
+				if r := recover(); r != nil {
+					msg := fmt.Sprintf("Recovered from panic in workflow batch: %v", r)
+					storeLog(msg)
+					if connect3270.Verbose {
+						pterm.Error.Println(msg)
+					}
+				}
+			}()
+			defer wg.Done()
+			defer func() { <-semaphore }()
+
+			portToUse := getNextAvailablePort()
+			if err := runWorkflow(portToUse, cfg); err != nil {
+				storeLog(fmt.Sprintf("Workflow on port %d error: %v", portToUse, err))
+				if connect3270.Verbose {
+					pterm.Error.Printf("Workflow on port %d error: %v\n", portToUse, err)
+				}
+			}
+		}(userConfig)
+	}
+
+	return workflowsToStart
 }
 
 // Helper functions for summary status
