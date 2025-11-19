@@ -2260,50 +2260,8 @@
     }
     var consoleModal = document.getElementById("consoleModal");
     if (consoleModal) {
-      consoleModal.addEventListener('show.bs.modal', function() { 
-        autoRefreshPausedByModal = true;
-        stopAutoRefresh(); 
-        loadLogs(); 
-      });
-      consoleModal.addEventListener('hidden.bs.modal', function() { 
-        autoRefreshPausedByModal = false;
-        startAutoRefresh(); 
-      });
-    }
-    
-    var startProcessModal = document.getElementById("startProcessModal");
-    if (startProcessModal) {
-      startProcessModal.addEventListener('show.bs.modal', function() { 
-        autoRefreshPausedByModal = true;
-        stopAutoRefresh(); 
-      });
-      startProcessModal.addEventListener('hidden.bs.modal', function() { 
-        autoRefreshPausedByModal = false;
-        startAutoRefresh(); 
-      });
-    }
-    
-    var startAppModal = document.getElementById("startAppModal");
-    if (startAppModal) {
-      startAppModal.addEventListener('show.bs.modal', function() { 
-        autoRefreshPausedByModal = true;
-        stopAutoRefresh(); 
-      });
-      startAppModal.addEventListener('hidden.bs.modal', function() { 
-        autoRefreshPausedByModal = false;
-        startAutoRefresh(); 
-      });
-    }
-    
-    var killModal = document.getElementById("killModal");
-    if (killModal) {
-      killModal.addEventListener('show.bs.modal', function() { 
-        autoRefreshPausedByModal = true;
-        stopAutoRefresh(); 
-      });
-      killModal.addEventListener('hidden.bs.modal', function() { 
-        autoRefreshPausedByModal = false;
-        startAutoRefresh(); 
+      consoleModal.addEventListener('show.bs.modal', function() {
+        loadLogs();
       });
     }
     var refreshIntervalId2 = null;
