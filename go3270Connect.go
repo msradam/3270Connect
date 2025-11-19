@@ -1655,11 +1655,20 @@ func (m Metrics) extend() ExtendedMetrics {
 	}
 	status := "Running" // Default status for missing or incomplete metrics
 	isRunning := isProcessRunning(m.PID)
+	completedOrFailed := m.TotalWorkflowsCompleted + m.TotalWorkflowsFailed
+	allWorkflowsAccounted := m.TotalWorkflowsStarted > 0 &&
+		completedOrFailed >= m.TotalWorkflowsStarted &&
+		m.ActiveWorkflows == 0
 	if m.RuntimeDuration > 0 && timeLeft == 0 && (m.Params != "" && !strings.Contains(m.Params, "-runApp")) {
 		status = "Ended"
 	}
 	if !isRunning {
-		status = "Killed"
+		switch {
+		case allWorkflowsAccounted:
+			status = "Ended"
+		case status != "Ended":
+			status = "Killed"
+		}
 	}
 
 	return ExtendedMetrics{
