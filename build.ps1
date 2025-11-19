@@ -73,9 +73,9 @@ if ($oldGOARCH) { $env:GOARCH = $oldGOARCH } else { Remove-Item Env:GOARCH -Erro
 if ($oldCGO) { $env:CGO_ENABLED = $oldCGO } else { Remove-Item Env:CGO_ENABLED -ErrorAction SilentlyContinue }
 
 Write-Host ""
-Write-Host "✅ Build complete!"
+Write-Host " Build complete!"
 Write-Host "--------------------------------------"
-Write-Host "  • dist/3270Connect.exe      → Windows terminal version"
-Write-Host "  • dist/3270Connect_linux    → Linux (amd64, static)"
+Write-Host "  dist/3270Connect.exe      → Windows terminal version"
+Write-Host "  dist/3270Connect_linux    → Linux (amd64, static)"
 Write-Host "--------------------------------------"
 Write-Host ""
