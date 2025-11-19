@@ -1760,6 +1760,7 @@
   var refreshPeriod = {{.RefreshPeriod}};
   var refreshIntervalId = null;
   var autoRefreshPausedByModal = false;
+  var modalOpenCount = 0;
   
   function startAutoRefresh() {
     if (autoRefreshEnabled && !refreshIntervalId && !autoRefreshPausedByModal) {
@@ -1775,10 +1776,33 @@
       console.log("Auto refresh paused"); 
     }
   }
+
+  function pauseAutoRefreshForModal() {
+    if (!autoRefreshPausedByModal) {
+      autoRefreshPausedByModal = true;
+      stopAutoRefresh();
+    }
+  }
+
+  function resumeAutoRefreshAfterModal() {
+    if (modalOpenCount === 0) {
+      autoRefreshPausedByModal = false;
+      if (autoRefreshEnabled) {
+        startAutoRefresh();
+      }
+    }
+  }
   
   function handleAutoRefreshToggle() {
-    var form = document.getElementById('autoRefreshForm');
     var checkbox = document.getElementById('autoRefreshToggle');
+    autoRefreshEnabled = checkbox.checked;
+    autoRefreshPausedByModal = modalOpenCount > 0;
+
+    if (!autoRefreshEnabled) {
+      stopAutoRefresh();
+    } else if (!autoRefreshPausedByModal) {
+      startAutoRefresh();
+    }
     var url = new URL(window.location.href);
     
     if (checkbox.checked) {
@@ -1817,6 +1841,18 @@
   
   startAutoRefresh();
   document.addEventListener('DOMContentLoaded', function() {
+    var modalElements = document.querySelectorAll('.modal');
+    modalElements.forEach(function(modalEl) {
+      modalEl.addEventListener('show.bs.modal', function() {
+        modalOpenCount++;
+        pauseAutoRefreshForModal();
+      });
+      modalEl.addEventListener('hidden.bs.modal', function() {
+        modalOpenCount = Math.max(0, modalOpenCount - 1);
+        resumeAutoRefreshAfterModal();
+      });
+    });
+
     var metricsData = JSON.parse('{{.ExtendedJSON}}');
     var maxCount = 0;
     metricsData.forEach(function(metric) { if (metric.durations && metric.durations.length > maxCount) { maxCount = metric.durations.length; } });
