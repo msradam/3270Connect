@@ -875,6 +875,24 @@
       text-shadow: 0 0 8px rgba(255, 82, 82, 0.5);
     }
 
+    .action-icon.workflow {
+      color: #5bc0de;
+    }
+
+    .action-icon.workflow:hover {
+      transform: scale(1.2);
+      text-shadow: 0 0 8px rgba(91, 192, 222, 0.6);
+    }
+
+    .action-icon.output {
+      color: #f0ad4e;
+    }
+
+    .action-icon.output:hover {
+      transform: scale(1.2);
+      text-shadow: 0 0 8px rgba(240, 173, 78, 0.6);
+    }
+
     /* Modern Form Controls */
     .form-control, .form-select {
       border-radius: var(--radius);
@@ -1105,6 +1123,56 @@
       letter-spacing: 0.08em;
       text-transform: uppercase;
       font-size: 0.75rem;
+    }
+
+    .refresh-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.7rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted-foreground);
+    }
+
+    .refresh-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .refresh-indicator .indicator-icon {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      border: 2px solid var(--muted-foreground);
+      position: relative;
+      transition: border-color 0.3s ease;
+    }
+
+    .refresh-indicator .indicator-icon::after {
+      content: '';
+      position: absolute;
+      inset: 2px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      border-top-color: var(--muted-foreground);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .refresh-indicator.active .indicator-icon {
+      border-color: var(--primary);
+    }
+
+    .refresh-indicator.active .indicator-icon::after {
+      opacity: 1;
+      border-top-color: var(--primary);
+      animation: spin 0.9s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
     }
 
     .logs-modal {
@@ -1452,6 +1520,12 @@
             </select>
           </div>
         </form>
+        <div class="refresh-status" aria-live="polite" aria-atomic="true">
+          <span class="refresh-indicator" id="refreshIndicator">
+            <span class="indicator-icon" id="refreshIndicatorIcon"></span>
+            <span id="refreshTimestamp">Last refresh: --</span>
+          </span>
+        </div>
         <button class="interface-button" type="button" data-bs-toggle="modal" data-bs-target="#startProcessModal" data-tippy-content="Start a new 3270Connect process">
           <i class="fas fa-rocket"></i>
           Start Process
@@ -1464,7 +1538,7 @@
           <i class="fas fa-terminal"></i>
           Console Logs
         </button>
-        <button class="interface-button" type="button" onclick="location.reload();" data-tippy-content="Refresh the page">
+        <button class="interface-button" type="button" onclick="refreshDashboardData(true);" data-tippy-content="Force a manual refresh">
           <i class="fas fa-sync-alt"></i>
           Refresh
         </button>
@@ -1480,22 +1554,22 @@
         <div class="metric-grid">
           <div class="metric-tile">
             <span class="metric-label">Active Workflows</span>
-            <span class="metric-value">{{.ActiveWorkflows}}</span>
+            <span class="metric-value" data-refresh-key="activeWorkflows">{{.ActiveWorkflows}}</span>
             <span class="metric-trend">Currently running processes</span>
           </div>
           <div class="metric-tile">
             <span class="metric-label">Total Started</span>
-            <span class="metric-value">{{.TotalWorkflowsStarted}}</span>
+            <span class="metric-value" data-refresh-key="totalWorkflowsStarted">{{.TotalWorkflowsStarted}}</span>
             <span class="metric-trend">Lifetime workflows launched</span>
           </div>
           <div class="metric-tile">
             <span class="metric-label">Completed</span>
-            <span class="metric-value">{{.TotalWorkflowsCompleted}}</span>
+            <span class="metric-value" data-refresh-key="totalWorkflowsCompleted">{{.TotalWorkflowsCompleted}}</span>
             <span class="metric-trend">Finished without error</span>
           </div>
           <div class="metric-tile">
             <span class="metric-label">Failed</span>
-            <span class="metric-value">{{.TotalWorkflowsFailed}}</span>
+            <span class="metric-value" data-refresh-key="totalWorkflowsFailed">{{.TotalWorkflowsFailed}}</span>
             <span class="metric-trend">Attention required</span>
           </div>
         </div>
@@ -1754,6 +1828,43 @@
   </div>
 </div>
 
+<!-- Workflow Preview Modal -->
+<div class="modal fade" id="workflowModal" tabindex="-1" aria-labelledby="workflowModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content bg-dark text-light border-secondary">
+      <div class="modal-header border-bottom border-secondary">
+        <h5 class="modal-title" id="workflowModalLabel">Workflow JSON</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted text-break mb-2"><strong>Path:</strong> <span id="workflowModalPath">Unknown</span></p>
+        <pre id="workflowModalContent" class="bg-black text-white rounded p-3" style="height: 60vh; overflow: auto;">Preparing workflow...</pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Output Preview Modal -->
+<div class="modal fade" id="outputModal" tabindex="-1" aria-labelledby="outputModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-fullscreen-lg-down modal-xl">
+    <div class="modal-content bg-dark text-light border-secondary">
+      <div class="modal-header border-bottom border-secondary">
+        <h5 class="modal-title" id="outputModalLabel">Live Output Preview</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-2 mb-2">
+          <small class="text-muted text-break" id="outputModalPath">Output path unavailable</small>
+          <span class="text-muted small" id="outputModalStatus">Auto-refresh every 4 seconds</span>
+        </div>
+        <div class="ratio ratio-16x9">
+          <iframe id="outputPreviewFrame" class="rounded border border-secondary" sandbox="allow-same-origin" srcdoc="<p class='text-light'>Loading output...</p>"></iframe>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
   var autoRefreshEnabled = {{.AutoRefreshEnabled}};
@@ -1761,19 +1872,48 @@
   var refreshIntervalId = null;
   var autoRefreshPausedByModal = false;
   var modalOpenCount = 0;
-  
+  var metricsData = JSON.parse('{{.ExtendedJSON}}');
+  var durationChart = null;
+  var cpuMemChart = null;
+  var durationSlider = null;
+  var resourcesSlider = null;
+  var refreshIndicatorElement = null;
+  var refreshTimestampElement = null;
+  var pidSelectElement = null;
+  var refreshIndicatorTimeout = null;
+  var colorPalette = [
+    'rgba(102, 126, 234, 1)',
+    'rgba(75, 192, 192, 1)',
+    'rgba(255, 159, 64, 1)',
+    'rgba(118, 75, 162, 1)',
+    'rgba(255, 99, 132, 1)',
+    'rgba(54, 162, 235, 1)',
+    'rgba(153, 102, 255, 1)',
+    'rgba(255, 206, 86, 1)'
+  ];
+
+  var processMetadataByPid = {};
+  var workflowModalElement = null;
+  var workflowModalContentElement = null;
+  var workflowModalPathElement = null;
+  var outputModalElement = null;
+  var outputPreviewFrame = null;
+  var outputModalStatusElement = null;
+  var outputModalPathElement = null;
+  var outputModalRefreshInterval = null;
+
   function startAutoRefresh() {
     if (autoRefreshEnabled && !refreshIntervalId && !autoRefreshPausedByModal) {
-      refreshIntervalId = setInterval(function() { window.location.reload(); }, parseInt(refreshPeriod) * 1000);
+      refreshIntervalId = setInterval(function() { refreshDashboardData(true); }, parseInt(refreshPeriod) * 1000);
       console.log("Auto refresh started");
     }
   }
-  
+
   function stopAutoRefresh() {
-    if (refreshIntervalId) { 
-      clearInterval(refreshIntervalId); 
-      refreshIntervalId = null; 
-      console.log("Auto refresh paused"); 
+    if (refreshIntervalId) {
+      clearInterval(refreshIntervalId);
+      refreshIntervalId = null;
+      console.log("Auto refresh paused");
     }
   }
 
@@ -1792,7 +1932,7 @@
       }
     }
   }
-  
+
   function handleAutoRefreshToggle() {
     var checkbox = document.getElementById('autoRefreshToggle');
     autoRefreshEnabled = checkbox.checked;
@@ -1802,21 +1942,21 @@
       stopAutoRefresh();
     } else if (!autoRefreshPausedByModal) {
       startAutoRefresh();
+      refreshDashboardData(true);
     }
     var url = new URL(window.location.href);
-    
+
     if (checkbox.checked) {
       url.searchParams.set('autoRefresh', 'true');
     } else {
       url.searchParams.set('autoRefresh', 'false');
     }
-    
-    // Preserve the refresh period
+
     var refreshPeriodSelect = document.getElementById('refreshPeriodSelect');
     if (refreshPeriodSelect && refreshPeriodSelect.value) {
       url.searchParams.set('refreshPeriod', refreshPeriodSelect.value);
     }
-    
+
     window.location.href = url.toString();
   }
 
@@ -1838,102 +1978,249 @@
 
     window.location.href = url.toString();
   }
-  
-  startAutoRefresh();
-  document.addEventListener('DOMContentLoaded', function() {
-    var modalElements = document.querySelectorAll('.modal');
-    modalElements.forEach(function(modalEl) {
-      modalEl.addEventListener('show.bs.modal', function() {
-        modalOpenCount++;
-        pauseAutoRefreshForModal();
-      });
-      modalEl.addEventListener('hidden.bs.modal', function() {
-        modalOpenCount = Math.max(0, modalOpenCount - 1);
-        resumeAutoRefreshAfterModal();
-      });
+
+  function triggerRefreshIndicator() {
+    if (!refreshIndicatorElement) {
+      return;
+    }
+    refreshIndicatorElement.classList.add('active');
+    if (refreshIndicatorTimeout) {
+      clearTimeout(refreshIndicatorTimeout);
+    }
+    refreshIndicatorTimeout = setTimeout(function() {
+      refreshIndicatorElement.classList.remove('active');
+    }, 1200);
+    if (refreshTimestampElement) {
+      refreshTimestampElement.textContent = 'Refreshing...';
+    }
+  }
+
+  function updateRefreshTimestamp(timestamp) {
+    if (!refreshTimestampElement) {
+      return;
+    }
+    var timeValue = typeof timestamp === 'number' ? new Date(timestamp * 1000) : new Date();
+    if (isNaN(timeValue.getTime())) {
+      timeValue = new Date();
+    }
+    refreshTimestampElement.textContent = 'Last refresh: ' + timeValue.toLocaleTimeString();
+  }
+
+  function updateHeaderMetrics(aggregatedMetrics) {
+    if (!aggregatedMetrics) {
+      return;
+    }
+    var mapping = {
+      activeWorkflows: aggregatedMetrics.activeWorkflows,
+      totalWorkflowsStarted: aggregatedMetrics.totalWorkflowsStarted,
+      totalWorkflowsCompleted: aggregatedMetrics.totalWorkflowsCompleted,
+      totalWorkflowsFailed: aggregatedMetrics.totalWorkflowsFailed
+    };
+    Object.keys(mapping).forEach(function(key) {
+      var node = document.querySelector('[data-refresh-key="' + key + '"]');
+      if (node) {
+        var value = mapping[key];
+        node.textContent = typeof value === 'number' ? value : (value || '0');
+      }
     });
+  }
 
-    var metricsData = JSON.parse('{{.ExtendedJSON}}');
-    var maxCount = 0;
-    metricsData.forEach(function(metric) { if (metric.durations && metric.durations.length > maxCount) { maxCount = metric.durations.length; } });
-    var labels = [];
-    for (var i = 0; i < maxCount; i++) { labels.push((i + 1)); }
-    
-    // Modern gradient color palette
-    var colors = [
-      'rgba(102, 126, 234, 1)',  // Purple
-      'rgba(75, 192, 192, 1)',   // Teal
-      'rgba(255, 159, 64, 1)',   // Orange
-      'rgba(118, 75, 162, 1)',   // Deep Purple
-      'rgba(255, 99, 132, 1)',   // Pink
-      'rgba(54, 162, 235, 1)',   // Blue
-      'rgba(153, 102, 255, 1)',  // Violet
-      'rgba(255, 206, 86, 1)'    // Yellow
-    ];
-    
-    // Build trimmed duration chart data so only active samples remain visible
-    function buildDurationData(dataPointLimit) {
-      var limitedLabels = labels.slice(-dataPointLimit);
-      var datasets = [];
-      var firstDataIndex = limitedLabels.length;
+  function computeAggregatedSeries() {
+    var aggregatedCPU = [];
+    var cpuCount = [];
+    var hostMemory = [];
+    var hostMetric = metricsData.length ? metricsData[0] : null;
 
-      metricsData.forEach(function(metric, index) {
-        var durations = metric.durations || [];
-        var padding = Math.max(maxCount - durations.length, 0);
-        var fullData = new Array(padding).fill(null).concat(durations);
-        var limitedData = fullData.slice(-dataPointLimit);
-        var dataset = {
-          label: "PID " + metric.pid,
-          data: limitedData,
-          borderColor: colors[index % colors.length],
-          backgroundColor: colors[index % colors.length].replace("1)", "0.1)"),
-          fill: true,
-          tension: 0.4,
-          borderWidth: 3,
-          pointRadius: 4,
-          pointHoverRadius: 6,
-          pointBackgroundColor: colors[index % colors.length],
-          pointBorderColor: '#fff',
-          pointBorderWidth: 2
-        };
-
-        var firstValueIndex = dataset.data.findIndex(function(value) { return value !== null && value !== undefined; });
-        if (firstValueIndex !== -1 && firstValueIndex < firstDataIndex) {
-          firstDataIndex = firstValueIndex;
-        }
-
-        datasets.push(dataset);
-      });
-
-      if (firstDataIndex > 0 && firstDataIndex < limitedLabels.length) {
-        limitedLabels = limitedLabels.slice(firstDataIndex);
-        datasets = datasets.map(function(dataset) {
-          return Object.assign({}, dataset, {
-            data: dataset.data.slice(firstDataIndex)
-          });
+    metricsData.forEach(function(metric) {
+      if (!hostMetric || (typeof metric.pid === 'number' && metric.pid < hostMetric.pid)) {
+        hostMetric = metric;
+      }
+      if (metric.cpuUsage) {
+        metric.cpuUsage.forEach(function(val, index) {
+          if (typeof aggregatedCPU[index] === 'undefined') {
+            aggregatedCPU[index] = 0;
+            cpuCount[index] = 0;
+          }
+          aggregatedCPU[index] += val;
+          cpuCount[index] += 1;
         });
       }
+    });
 
-      return { labels: limitedLabels, datasets: datasets };
+    for (var i = 0; i < aggregatedCPU.length; i++) {
+      if (cpuCount[i]) {
+        aggregatedCPU[i] = aggregatedCPU[i] / cpuCount[i];
+      }
     }
-    
+
+    if (hostMetric && hostMetric.memoryUsage) {
+      hostMemory = hostMetric.memoryUsage.slice();
+    }
+
+    return { aggregatedCPU: aggregatedCPU, hostMemory: hostMemory };
+  }
+
+  function buildDurationData(dataPointLimit) {
+    var maxCount = 0;
+    metricsData.forEach(function(metric) {
+      var durations = metric.durations || [];
+      if (durations.length > maxCount) {
+        maxCount = durations.length;
+      }
+    });
+    var labels = [];
+    for (var i = 0; i < maxCount; i++) { labels.push(i + 1); }
+    var limitedLabels = labels.slice(-dataPointLimit);
+    var datasets = [];
+    var firstDataIndex = limitedLabels.length;
+
+    metricsData.forEach(function(metric, index) {
+      var durations = metric.durations || [];
+      var padding = Math.max(maxCount - durations.length, 0);
+      var fullData = new Array(padding).fill(null).concat(durations);
+      var limitedData = fullData.slice(-dataPointLimit);
+      var color = colorPalette[index % colorPalette.length];
+      var dataset = {
+        label: "PID " + metric.pid,
+        data: limitedData,
+        borderColor: color,
+        backgroundColor: color.replace("1)", "0.1)"),
+        fill: true,
+        tension: 0.4,
+        borderWidth: 3,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        pointBackgroundColor: color,
+        pointBorderColor: '#fff',
+        pointBorderWidth: 2
+      };
+
+      var firstValueIndex = dataset.data.findIndex(function(value) { return value !== null && value !== undefined; });
+      if (firstValueIndex !== -1 && firstValueIndex < firstDataIndex) {
+        firstDataIndex = firstValueIndex;
+      }
+
+      datasets.push(dataset);
+    });
+
+    if (firstDataIndex > 0 && firstDataIndex < limitedLabels.length) {
+      limitedLabels = limitedLabels.slice(firstDataIndex);
+      datasets = datasets.map(function(dataset) {
+        return Object.assign({}, dataset, {
+          data: dataset.data.slice(firstDataIndex)
+        });
+      });
+    }
+
+    return { labels: limitedLabels, datasets: datasets };
+  }
+
+  function buildResourceData(dataPointLimit, aggregatedCPU, hostMemory) {
+    var maxLen = Math.max(aggregatedCPU.length, hostMemory.length);
+    var labels = [];
+    for (var i = 0; i < maxLen; i++) { labels.push(" " + (i + 1)); }
+    var limitedLabels = labels.slice(-dataPointLimit);
+    var fullCpuData = new Array(Math.max(maxLen - aggregatedCPU.length, 0)).fill(null).concat(aggregatedCPU);
+    var fullMemData = new Array(Math.max(maxLen - hostMemory.length, 0)).fill(null).concat(hostMemory);
+
+    var datasets = [{
+      label: "CPU Usage (%)",
+      data: fullCpuData.slice(-dataPointLimit),
+      borderColor: "rgba(102, 126, 234, 1)",
+      backgroundColor: "rgba(102, 126, 234, 0.1)",
+      fill: true,
+      tension: 0.4,
+      borderWidth: 3,
+      pointRadius: 4,
+      pointHoverRadius: 6,
+      pointBackgroundColor: "rgba(102, 126, 234, 1)",
+      pointBorderColor: '#fff',
+      pointBorderWidth: 2
+    }, {
+      label: "Memory Usage (%)",
+      data: fullMemData.slice(-dataPointLimit),
+      borderColor: "rgba(245, 87, 108, 1)",
+      backgroundColor: "rgba(245, 87, 108, 0.1)",
+      fill: true,
+      tension: 0.4,
+      borderWidth: 3,
+      pointRadius: 4,
+      pointHoverRadius: 6,
+      pointBackgroundColor: "rgba(245, 87, 108, 1)",
+      pointBorderColor: '#fff',
+      pointBorderWidth: 2
+    }];
+
+    var firstDataIndex = limitedLabels.length;
+    datasets.forEach(function(dataset) {
+      var firstValueIndex = dataset.data.findIndex(function(value) { return value !== null && value !== undefined; });
+      if (firstValueIndex !== -1 && firstValueIndex < firstDataIndex) {
+        firstDataIndex = firstValueIndex;
+      }
+    });
+
+    if (firstDataIndex > 0 && firstDataIndex < limitedLabels.length) {
+      limitedLabels = limitedLabels.slice(firstDataIndex);
+      datasets = datasets.map(function(dataset) {
+        return Object.assign({}, dataset, {
+          data: dataset.data.slice(firstDataIndex)
+        });
+      });
+    }
+
+    return { labels: limitedLabels, datasets: datasets };
+  }
+
+  function updateSystemMonitor(cpuSeries, memorySeries) {
+    var cpuValueNode = document.getElementById("cpuUsageValue");
+    var memoryValueNode = document.getElementById("memoryUsageValue");
+    var cpuBar = document.getElementById("cpuUsageBar");
+    var memoryBar = document.getElementById("memoryUsageBar");
+
+    if (cpuValueNode) {
+      var cpuValue = cpuSeries.length ? cpuSeries[cpuSeries.length - 1] : null;
+      if (cpuValue === null || typeof cpuValue === 'undefined' || isNaN(cpuValue)) {
+        cpuValueNode.textContent = '--';
+        if (cpuBar) { cpuBar.style.width = '0%'; }
+      } else {
+        var clampedCpu = Math.max(0, Math.min(100, cpuValue));
+        cpuValueNode.textContent = clampedCpu.toFixed(2);
+        if (cpuBar) { cpuBar.style.width = clampedCpu.toFixed(2) + '%'; }
+      }
+    }
+
+    if (memoryValueNode) {
+      var memoryValue = memorySeries.length ? memorySeries[memorySeries.length - 1] : null;
+      if (memoryValue === null || typeof memoryValue === 'undefined' || isNaN(memoryValue)) {
+        memoryValueNode.textContent = '--';
+        if (memoryBar) { memoryBar.style.width = '0%'; }
+      } else {
+        var clampedMemory = Math.max(0, Math.min(100, memoryValue));
+        memoryValueNode.textContent = clampedMemory.toFixed(2);
+        if (memoryBar) { memoryBar.style.width = clampedMemory.toFixed(2) + '%'; }
+      }
+    }
+  }
+
+  function initializeCharts() {
     var ctx1 = document.getElementById("durationChart").getContext("2d");
-    var durationInitialData = buildDurationData(30);
-    var durationChart = new Chart(ctx1, {
+    var initialDurationLimit = durationSlider ? parseInt(durationSlider.value) : 30;
+    var durationInitialData = buildDurationData(initialDurationLimit);
+    durationChart = new Chart(ctx1, {
       type: "line",
       data: durationInitialData,
       options: {
         responsive: true,
         maintainAspectRatio: false,
         animation: { duration: 750, easing: 'easeInOutQuart' },
-        scales: { 
-          y: { 
-            beginAtZero: true, 
+        scales: {
+          y: {
+            beginAtZero: true,
             title: { display: true, text: "Duration (seconds)", font: { size: 14, weight: 'bold' } },
             grid: { color: 'rgba(0, 0, 0, 0.05)' }
-          }, 
-          x: { 
-            type: 'category', 
+          },
+          x: {
+            type: 'category',
             position: 'bottom',
             offset: false,
             ticks: { align: 'start' },
@@ -1941,7 +2228,7 @@
             grid: { color: 'rgba(0, 0, 0, 0.05)', offset: false }
           }
         },
-        plugins: { 
+        plugins: {
           legend: {
             display: true,
             position: 'top',
@@ -1958,133 +2245,19 @@
             bodyFont: { size: 13 },
             cornerRadius: 8
           },
-          zoom: { 
-            pan: { enabled: true, mode: 'x', speed: 10, threshold: 10 }, 
-            zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } 
-          } 
+          zoom: {
+            pan: { enabled: true, mode: 'x', speed: 10, threshold: 10 },
+            zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' }
+          }
         }
       }
     });
-    
-    // Add event listener for duration data points slider
-    document.getElementById('durationDataPoints').addEventListener('input', function(e) {
-      var dataPointLimit = parseInt(e.target.value);
-      document.getElementById('durationDataPointsValue').textContent = dataPointLimit;
-      var updatedDuration = buildDurationData(dataPointLimit);
-      durationChart.data.labels = updatedDuration.labels;
-      durationChart.data.datasets = updatedDuration.datasets;
-      durationChart.update();
-    });
-    var aggregatedCPU = [];
-    var cpuCount = [];
-    metricsData.forEach(function(metric) {
-      if (metric.cpuUsage) {
-        metric.cpuUsage.forEach(function(val, i) {
-          if (typeof aggregatedCPU[i] === 'undefined') { aggregatedCPU[i] = 0; cpuCount[i] = 0; }
-          aggregatedCPU[i] += val; cpuCount[i] += 1;
-        });
-      }
-    });
-    for (var i = 0; i < aggregatedCPU.length; i++) { aggregatedCPU[i] = aggregatedCPU[i] / cpuCount[i]; }
-    var hostMemory = [];
-    if (metricsData.length > 0) {
-      var hostMetric = metricsData[0];
-      metricsData.forEach(function(m) { if (m.pid < hostMetric.pid) { hostMetric = m; } });
-      hostMemory = hostMetric.memoryUsage || [];
-    }
-    var maxLen = Math.max(aggregatedCPU.length, hostMemory.length);
-    var labels2 = [];
-    for (var i = 0; i < maxLen; i++) { labels2.push(" " + (i + 1)); }
 
-    function updateSystemMonitor(cpuSeries, memorySeries) {
-      var cpuValueNode = document.getElementById("cpuUsageValue");
-      var memoryValueNode = document.getElementById("memoryUsageValue");
-      var cpuBar = document.getElementById("cpuUsageBar");
-      var memoryBar = document.getElementById("memoryUsageBar");
-
-      if (cpuValueNode) {
-        var cpuValue = cpuSeries.length ? cpuSeries[cpuSeries.length - 1] : null;
-        if (cpuValue === null || typeof cpuValue === 'undefined' || isNaN(cpuValue)) {
-          cpuValueNode.textContent = '--';
-          if (cpuBar) { cpuBar.style.width = '0%'; }
-        } else {
-          var clampedCpu = Math.max(0, Math.min(100, cpuValue));
-          cpuValueNode.textContent = clampedCpu.toFixed(2);
-          if (cpuBar) { cpuBar.style.width = clampedCpu.toFixed(2) + '%'; }
-        }
-      }
-
-      if (memoryValueNode) {
-        var memoryValue = memorySeries.length ? memorySeries[memorySeries.length - 1] : null;
-        if (memoryValue === null || typeof memoryValue === 'undefined' || isNaN(memoryValue)) {
-          memoryValueNode.textContent = '--';
-          if (memoryBar) { memoryBar.style.width = '0%'; }
-        } else {
-          var clampedMemory = Math.max(0, Math.min(100, memoryValue));
-          memoryValueNode.textContent = clampedMemory.toFixed(2);
-          if (memoryBar) { memoryBar.style.width = clampedMemory.toFixed(2) + '%'; }
-        }
-      }
-    }
-
-    updateSystemMonitor(aggregatedCPU, hostMemory);
-    
-    function buildResourceData(dataPointLimit) {
-      var limitedLabels = labels2.slice(-dataPointLimit);
-      var fullCpuData = new Array(Math.max(maxLen - aggregatedCPU.length, 0)).fill(null).concat(aggregatedCPU);
-      var fullMemData = new Array(Math.max(maxLen - hostMemory.length, 0)).fill(null).concat(hostMemory);
-
-      var datasets = [{
-        label: "CPU Usage (%)",
-        data: fullCpuData.slice(-dataPointLimit),
-        borderColor: "rgba(102, 126, 234, 1)",
-        backgroundColor: "rgba(102, 126, 234, 0.1)",
-        fill: true,
-        tension: 0.4,
-        borderWidth: 3,
-        pointRadius: 4,
-        pointHoverRadius: 6,
-        pointBackgroundColor: "rgba(102, 126, 234, 1)",
-        pointBorderColor: '#fff',
-        pointBorderWidth: 2
-      }, {
-        label: "Memory Usage (%)",
-        data: fullMemData.slice(-dataPointLimit),
-        borderColor: "rgba(245, 87, 108, 1)",
-        backgroundColor: "rgba(245, 87, 108, 0.1)",
-        fill: true,
-        tension: 0.4,
-        borderWidth: 3,
-        pointRadius: 4,
-        pointHoverRadius: 6,
-        pointBackgroundColor: "rgba(245, 87, 108, 1)",
-        pointBorderColor: '#fff',
-        pointBorderWidth: 2
-      }];
-
-      var firstDataIndex = limitedLabels.length;
-      datasets.forEach(function(dataset) {
-        var firstValueIndex = dataset.data.findIndex(function(value) { return value !== null && value !== undefined; });
-        if (firstValueIndex !== -1 && firstValueIndex < firstDataIndex) {
-          firstDataIndex = firstValueIndex;
-        }
-      });
-
-      if (firstDataIndex > 0 && firstDataIndex < limitedLabels.length) {
-        limitedLabels = limitedLabels.slice(firstDataIndex);
-        datasets = datasets.map(function(dataset) {
-          return Object.assign({}, dataset, {
-            data: dataset.data.slice(firstDataIndex)
-          });
-        });
-      }
-
-      return { labels: limitedLabels, datasets: datasets };
-    }
-    
     var ctx2 = document.getElementById("cpuMemChart").getContext("2d");
-    var resourceInitialData = buildResourceData(30);
-    var cpuMemChart = new Chart(ctx2, {
+    var aggregated = computeAggregatedSeries();
+    var initialResourceLimit = resourcesSlider ? parseInt(resourcesSlider.value) : 30;
+    var resourceInitialData = buildResourceData(initialResourceLimit, aggregated.aggregatedCPU, aggregated.hostMemory);
+    cpuMemChart = new Chart(ctx2, {
       type: "line",
       data: resourceInitialData,
       options: {
@@ -2092,22 +2265,22 @@
         maintainAspectRatio: false,
         animation: { duration: 750, easing: 'easeInOutQuart' },
         scales: {
-          x: { 
+          x: {
             type: 'category',
             position: 'bottom',
             offset: false,
             ticks: { align: 'start' },
-            title: { display: true, text: "Time (seconds)", font: { size: 14, weight: 'bold' } }, 
+            title: { display: true, text: "Time (seconds)", font: { size: 14, weight: 'bold' } },
             grid: { color: 'rgba(0, 0, 0, 0.05)', offset: false }
           },
-          y: { 
-            beginAtZero: true, 
+          y: {
+            beginAtZero: true,
             max: 100,
             title: { display: true, text: "Usage (%)", font: { size: 14, weight: 'bold' } },
             grid: { color: 'rgba(0, 0, 0, 0.05)' }
           }
         },
-        plugins: { 
+        plugins: {
           legend: {
             display: true,
             position: 'top',
@@ -2129,151 +2302,42 @@
               }
             }
           },
-          zoom: { 
-            pan: { enabled: true, mode: 'x', speed: 10, threshold: 10 }, 
-            zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } 
-          } 
+          zoom: {
+            pan: { enabled: true, mode: 'x', speed: 10, threshold: 10 },
+            zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' }
+          }
         }
       }
     });
-    
-    // Add event listener for resources data points slider
-    document.getElementById('resourcesDataPoints').addEventListener('input', function(e) {
-      var dataPointLimit = parseInt(e.target.value);
-      document.getElementById('resourcesDataPointsValue').textContent = dataPointLimit;
-      var updatedResource = buildResourceData(dataPointLimit);
-      cpuMemChart.data.labels = updatedResource.labels;
-      cpuMemChart.data.datasets = updatedResource.datasets;
-      cpuMemChart.update();
-    });
-    var pidSelect = document.getElementById("pidFilter");
-    var optionAll = document.createElement("option");
-    optionAll.value = "";
-    optionAll.text = "All PIDs";
-    pidSelect.appendChild(optionAll);
-    var uniquePIDs = [];
-    metricsData.forEach(function(metric) { if (metric.pid != null && uniquePIDs.indexOf(metric.pid) === -1) { uniquePIDs.push(metric.pid); } });
-    uniquePIDs.sort(function(a, b) { return a - b; });
-    uniquePIDs.forEach(function(pid) { var option = document.createElement("option"); option.value = pid; option.text = pid; pidSelect.appendChild(option); });
-    function loadLogs() {
-      var pid = document.getElementById("pidFilter").value;
-      var url = "/console";
-      if (pid) {
-        url += "?pid=" + encodeURIComponent(pid);
-      }
 
-      fetch(url)
-        .then(response => response.json())
-        .then(data => {
-          var container = document.getElementById("logsContainer");
-          container.innerHTML = "";
+    updateSystemMonitor(aggregated.aggregatedCPU, aggregated.hostMemory);
+  }
 
-          if (!data || data.length === 0) {
-            container.innerHTML = "<p>No logs found.</p>";
-            return;
-          }
-
-          // Track parameters by PID
-          const pidParamsMap = {};
-
-          // Create a Bootstrap table
-          var table = document.createElement("table");
-          table.classList.add("table", "table-dark", "table-striped", "table-sm");
-
-          // Create a thead with column headers
-          var thead = document.createElement("thead");
-          thead.innerHTML = `
-            <tr>
-              <th style="width: 180px;">Time</th>
-              <th style="width: 60px;">PID</th>
-              <th>Log</th>
-            </tr>
-          `;
-          table.appendChild(thead);
-
-          // Create a tbody to hold log rows
-          var tbody = document.createElement("tbody");
-
-          data.forEach(function(entry) {
-            const pid = entry.pid;
-            const param = entry.parameters;
-
-            // Maintain pidParamsMap for later display
-            if (!pidParamsMap[pid]) {
-              pidParamsMap[pid] = new Set();
-            }
-            pidParamsMap[pid].add(param);
-
-            // Build a table row for each log entry
-            var row = document.createElement("tr");
-            var timestamp = new Date(entry.timestamp).toLocaleString();
-
-            row.innerHTML = `
-              <td style="color: green;">${timestamp}</td>
-              <td style="color: LightGreen;">${pid}</td>
-              <td style="color: white;">${entry.log}</td>
-            `;
-            tbody.appendChild(row);
-          });
-
-          table.appendChild(tbody);
-          container.appendChild(table);
-
-          // Now populate the PID parameters section
-          const containerParams = document.getElementById("pidParamsContainer");
-          containerParams.innerHTML = "";
-
-          const renderParamsRow = function(pidValue, paramsSet) {
-            const entries = Array.from(paramsSet || []);
-            const paramString = entries.length ? entries.join(", ") : "-";
-            return `
-              <div class="pid-param-row">
-                <span class="badge bg-dark text-light pid-badge"><span class="pid-label">PID</span><span class="pid-value">${pidValue}</span></span>
-                <span class="badge bg-secondary text-dark param-badge"><span class="param-label">Parameters</span><span class="param-text">${paramString}</span></span>
-              </div>`;
-          };
-
-          let selectedPid = document.getElementById("pidFilter").value;
-          if (!selectedPid) {
-            // Show params for all PIDs
-            for (const [pid, paramsSet] of Object.entries(pidParamsMap)) {
-              containerParams.innerHTML += renderParamsRow(pid, paramsSet);
-            }
-          } else {
-            // Show params only for the selected PID
-            let paramsSet = pidParamsMap[selectedPid];
-            if (paramsSet) {
-              containerParams.innerHTML = renderParamsRow(selectedPid, paramsSet);
-            } else {
-              containerParams.innerHTML = `<p>No logs found for PID ${selectedPid}.</p>`;
-            }
-          }
-        })
-        .catch(err => {
-          console.error("Error loading logs:", err);
-        });
+  function updateCharts() {
+    if (!durationChart || !cpuMemChart) {
+      return;
     }
+    var durationLimit = durationSlider ? parseInt(durationSlider.value) : 30;
+    var durationData = buildDurationData(durationLimit);
+    durationChart.data.labels = durationData.labels;
+    durationChart.data.datasets = durationData.datasets;
+    durationChart.update();
 
-    var loadLogsButton = document.getElementById("loadLogs");
-    if (loadLogsButton) {
-      loadLogsButton.addEventListener("click", function() { loadLogs(); });
-    }
-    var consoleModal = document.getElementById("consoleModal");
-    if (consoleModal) {
-      consoleModal.addEventListener('show.bs.modal', function() {
-        loadLogs();
-      });
-    }
-    var refreshIntervalId2 = null;
-    function startLogsAutoRefresh(interval) { if (!refreshIntervalId2) { refreshIntervalId2 = setInterval(loadLogs, interval * 1000); } }
-    function stopLogsAutoRefresh() { if (refreshIntervalId2) { clearInterval(refreshIntervalId2); refreshIntervalId2 = null; } }
-    var autoRefreshLogsCheckbox = document.getElementById("autoRefreshLogsCheckbox");
-    var refreshIntervalSelect = document.getElementById("logsRefreshInterval");
-    pidSelect.addEventListener("change", function() { loadLogs(); });
-    autoRefreshLogsCheckbox.addEventListener("change", function(){ if(this.checked) { startLogsAutoRefresh(parseInt(refreshIntervalSelect.value)); } else { stopLogsAutoRefresh(); } });
-    refreshIntervalSelect.addEventListener("change", function(){ if(autoRefreshLogsCheckbox.checked) { stopLogsAutoRefresh(); startLogsAutoRefresh(parseInt(this.value)); } });
-    // Add PID info below the graphs with modern styling
+    var aggregated = computeAggregatedSeries();
+    var resourceLimit = resourcesSlider ? parseInt(resourcesSlider.value) : 30;
+    var resourceData = buildResourceData(resourceLimit, aggregated.aggregatedCPU, aggregated.hostMemory);
+    cpuMemChart.data.labels = resourceData.labels;
+    cpuMemChart.data.datasets = resourceData.datasets;
+    cpuMemChart.update();
+    updateSystemMonitor(aggregated.aggregatedCPU, aggregated.hostMemory);
+  }
+
+  function renderProcessIntelligenceTable(metrics) {
     var pidInfoContainer = document.getElementById("pidParamsContainerOnDashboard");
+    if (!pidInfoContainer) {
+      return;
+    }
+    processMetadataByPid = {};
     pidInfoContainer.innerHTML = "";
     var table = document.createElement("table");
     table.classList.add("table", "table-hover");
@@ -2294,11 +2358,18 @@
     `;
     table.appendChild(thead);
     var tbody = document.createElement("tbody");
-    metricsData.forEach(function(metric) {
-      var avgCompletionTime = metric.durations.reduce((a, b) => a + b, 0) / metric.durations.length;
+    metrics.forEach(function(metric) {
+      processMetadataByPid[metric.pid] = {
+        configPath: metric.configFilePath || "",
+        outputPath: metric.outputFilePath || ""
+      };
+      var durations = metric.durations || [];
+      var avgCompletionTime = durations.length ? durations.reduce(function(a, b) { return a + b; }, 0) / durations.length : NaN;
       var row = document.createElement("tr");
       row.innerHTML = `
         <td style="text-align: center;">
+          <i class="fas fa-file-code action-icon workflow" onclick="showWorkflowModal(${metric.pid})" data-tippy-content="View Workflow JSON"></i>
+          <i class="fas fa-desktop action-icon output" onclick="showOutputModal(${metric.pid})" data-tippy-content="Preview Output HTML"></i>
           <i class="fas fa-file-alt action-icon logs" onclick="openLogsModal(${metric.pid})" data-tippy-content="View Logs"></i>
           <i class="fas fa-skull-crossbones action-icon kill" onclick="confirmKill(${metric.pid}, '${metric.params || '-dashboard'}')" data-tippy-content="Terminate Process"></i>
         </td>
@@ -2316,7 +2387,362 @@
     });
     table.appendChild(tbody);
     pidInfoContainer.appendChild(table);
+  }
+
+  function updatePidFilterOptions(metrics) {
+    if (!pidSelectElement) {
+      return;
+    }
+    var selected = pidSelectElement.value;
+    pidSelectElement.innerHTML = '';
+    var optionAll = document.createElement("option");
+    optionAll.value = "";
+    optionAll.text = "All PIDs";
+    pidSelectElement.appendChild(optionAll);
+    var uniquePIDs = [];
+    metrics.forEach(function(metric) {
+      if (metric.pid != null && uniquePIDs.indexOf(metric.pid) === -1) {
+        uniquePIDs.push(metric.pid);
+      }
+    });
+    uniquePIDs.sort(function(a, b) { return a - b; });
+    uniquePIDs.forEach(function(pid) {
+      var option = document.createElement("option");
+      option.value = pid;
+      option.text = pid;
+      pidSelectElement.appendChild(option);
+    });
+    if (selected && uniquePIDs.indexOf(parseInt(selected)) !== -1) {
+      pidSelectElement.value = selected;
+    } else {
+      pidSelectElement.value = "";
+    }
+  }
+
+  function showWorkflowModal(pid) {
+    if (!workflowModalElement) {
+      return;
+    }
+    var metadata = processMetadataByPid[pid] || {};
+    if (workflowModalPathElement) {
+      workflowModalPathElement.textContent = metadata.configPath || 'Path unavailable';
+    }
+    if (workflowModalContentElement) {
+      workflowModalContentElement.textContent = 'Loading workflow...';
+    }
+    var modalInstance = new bootstrap.Modal(workflowModalElement);
+    modalInstance.show();
+    if (!metadata.configPath) {
+      if (workflowModalContentElement) {
+        workflowModalContentElement.textContent = 'Configuration path is missing for PID ' + pid + '.';
+      }
+      return;
+    }
+    fetch('/dashboard/workflow?pid=' + encodeURIComponent(pid), { cache: 'no-store' })
+      .then(function(response) {
+        if (!response.ok) {
+          return response.text().then(function(body) {
+            throw new Error(body || response.statusText || 'Unable to load workflow');
+          });
+        }
+        return response.text();
+      })
+      .then(function(text) {
+        var formatted = text;
+        try {
+          var parsed = JSON.parse(text);
+          formatted = JSON.stringify(parsed, null, 2);
+        } catch (error) {
+          // Keep raw text if parsing fails
+        }
+        if (workflowModalContentElement) {
+          workflowModalContentElement.textContent = formatted;
+        }
+      })
+      .catch(function(err) {
+        if (workflowModalContentElement) {
+          workflowModalContentElement.textContent = 'Unable to load workflow: ' + err.message;
+        }
+      });
+  }
+
+  function showOutputModal(pid) {
+    if (!outputModalElement) {
+      return;
+    }
+    var metadata = processMetadataByPid[pid] || {};
+    if (outputModalPathElement) {
+      outputModalPathElement.textContent = metadata.outputPath || 'Path unavailable';
+    }
+    if (outputModalStatusElement) {
+      outputModalStatusElement.textContent = 'Loading output...';
+    }
+    if (outputModalRefreshInterval) {
+      clearInterval(outputModalRefreshInterval);
+      outputModalRefreshInterval = null;
+    }
+    var modalInstance = new bootstrap.Modal(outputModalElement);
+    modalInstance.show();
+    if (!metadata.outputPath) {
+      if (outputModalStatusElement) {
+        outputModalStatusElement.textContent = 'No output file configured for PID ' + pid + '.';
+      }
+      return;
+    }
+    refreshOutputModal(pid);
+    outputModalRefreshInterval = setInterval(function() {
+      refreshOutputModal(pid);
+    }, 4000);
+    outputModalElement.addEventListener('hidden.bs.modal', function cleanup() {
+      if (outputModalRefreshInterval) {
+        clearInterval(outputModalRefreshInterval);
+        outputModalRefreshInterval = null;
+      }
+    }, { once: true });
+  }
+
+  function refreshOutputModal(pid) {
+    if (!outputPreviewFrame) {
+      return;
+    }
+    fetch('/dashboard/output?pid=' + encodeURIComponent(pid), { cache: 'no-store' })
+      .then(function(response) {
+        if (!response.ok) {
+          return response.text().then(function(body) {
+            throw new Error(body || response.statusText || 'Unable to load output preview');
+          });
+        }
+        return response.text();
+      })
+      .then(function(html) {
+        if (outputPreviewFrame) {
+          outputPreviewFrame.srcdoc = html;
+        }
+        if (outputModalStatusElement) {
+          outputModalStatusElement.textContent = 'Updated ' + new Date().toLocaleTimeString();
+        }
+      })
+      .catch(function(err) {
+        if (outputModalStatusElement) {
+          outputModalStatusElement.textContent = 'Error loading output: ' + err.message;
+        }
+      });
+  }
+
+  function refreshDashboardData(showIndicator) {
+    if (showIndicator) {
+      triggerRefreshIndicator();
+    }
+    return fetch('/dashboard/data')
+      .then(function(response) {
+        if (!response.ok) {
+          throw new Error('Failed to refresh dashboard data');
+        }
+        return response.json();
+      })
+      .then(function(payload) {
+        if (!payload) {
+          return;
+        }
+        metricsData = payload.extendedMetrics || [];
+        updateHeaderMetrics(payload.aggregatedMetrics);
+        renderProcessIntelligenceTable(metricsData);
+        updatePidFilterOptions(metricsData);
+        updateCharts();
+        updateRefreshTimestamp(payload.timestamp || Date.now() / 1000);
+      })
+      .catch(function(error) {
+        console.error("Dashboard refresh failed:", error);
+      });
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    durationSlider = document.getElementById('durationDataPoints');
+    resourcesSlider = document.getElementById('resourcesDataPoints');
+    refreshIndicatorElement = document.getElementById('refreshIndicator');
+    refreshTimestampElement = document.getElementById('refreshTimestamp');
+    pidSelectElement = document.getElementById('pidFilter');
+    workflowModalElement = document.getElementById('workflowModal');
+    workflowModalContentElement = document.getElementById('workflowModalContent');
+    workflowModalPathElement = document.getElementById('workflowModalPath');
+    outputModalElement = document.getElementById('outputModal');
+    outputPreviewFrame = document.getElementById('outputPreviewFrame');
+    outputModalStatusElement = document.getElementById('outputModalStatus');
+    outputModalPathElement = document.getElementById('outputModalPath');
+
+    if (durationSlider) {
+      document.getElementById('durationDataPointsValue').textContent = durationSlider.value;
+      durationSlider.addEventListener('input', function() {
+        document.getElementById('durationDataPointsValue').textContent = durationSlider.value;
+        updateCharts();
+      });
+    }
+    if (resourcesSlider) {
+      document.getElementById('resourcesDataPointsValue').textContent = resourcesSlider.value;
+      resourcesSlider.addEventListener('input', function() {
+        document.getElementById('resourcesDataPointsValue').textContent = resourcesSlider.value;
+        updateCharts();
+      });
+    }
+
+    initializeCharts();
+    renderProcessIntelligenceTable(metricsData);
+    updatePidFilterOptions(metricsData);
+    updateRefreshTimestamp(Date.now() / 1000);
+
+    if (pidSelectElement) {
+      pidSelectElement.addEventListener('change', function() {
+        loadLogs();
+      });
+    }
+
+    var modalElements = document.querySelectorAll('.modal');
+    modalElements.forEach(function(modalEl) {
+      modalEl.addEventListener('show.bs.modal', function() {
+        modalOpenCount++;
+        pauseAutoRefreshForModal();
+      });
+      modalEl.addEventListener('hidden.bs.modal', function() {
+        modalOpenCount = Math.max(0, modalOpenCount - 1);
+        resumeAutoRefreshAfterModal();
+      });
+    });
+
+    var consoleModal = document.getElementById("consoleModal");
+    if (consoleModal) {
+      consoleModal.addEventListener('show.bs.modal', function() {
+        loadLogs();
+      });
+    }
+
+    var loadLogsButton = document.getElementById("loadLogs");
+    if (loadLogsButton) {
+      loadLogsButton.addEventListener("click", function() { loadLogs(); });
+    }
+
+    var autoRefreshLogsCheckbox = document.getElementById("autoRefreshLogsCheckbox");
+    var refreshIntervalSelect = document.getElementById("logsRefreshInterval");
+    var refreshIntervalId2 = null;
+    function startLogsAutoRefresh(interval) {
+      if (!refreshIntervalId2) {
+        refreshIntervalId2 = setInterval(loadLogs, interval * 1000);
+      }
+    }
+    function stopLogsAutoRefresh() {
+      if (refreshIntervalId2) {
+        clearInterval(refreshIntervalId2);
+        refreshIntervalId2 = null;
+      }
+    }
+    if (autoRefreshLogsCheckbox) {
+      autoRefreshLogsCheckbox.addEventListener("change", function() {
+        if (this.checked && refreshIntervalSelect) {
+          startLogsAutoRefresh(parseInt(refreshIntervalSelect.value));
+        } else {
+          stopLogsAutoRefresh();
+        }
+      });
+    }
+    if (refreshIntervalSelect) {
+      refreshIntervalSelect.addEventListener("change", function() {
+        if (autoRefreshLogsCheckbox && autoRefreshLogsCheckbox.checked) {
+          stopLogsAutoRefresh();
+          startLogsAutoRefresh(parseInt(this.value));
+        }
+      });
+    }
+
+    if (autoRefreshEnabled && !autoRefreshPausedByModal) {
+      startAutoRefresh();
+    }
   });
+
+  function loadLogs() {
+    var pid = pidSelectElement ? pidSelectElement.value : (document.getElementById("pidFilter") ? document.getElementById("pidFilter").value : "");
+    var url = "/console";
+    if (pid) {
+      url += "?pid=" + encodeURIComponent(pid);
+    }
+
+    fetch(url)
+      .then(function(response) { return response.json(); })
+      .then(function(data) {
+        var container = document.getElementById("logsContainer");
+        if (!container) {
+          return;
+        }
+        container.innerHTML = "";
+
+        if (!data || data.length === 0) {
+          container.innerHTML = "<p>No logs found.</p>";
+          return;
+        }
+
+        const pidParamsMap = {};
+        var table = document.createElement("table");
+        table.classList.add("table", "table-dark", "table-striped", "table-sm");
+        var thead = document.createElement("thead");
+        thead.innerHTML = `
+          <tr>
+            <th style="width: 180px;">Time</th>
+            <th style="width: 60px;">PID</th>
+            <th>Log</th>
+          </tr>
+        `;
+        table.appendChild(thead);
+        var tbody = document.createElement("tbody");
+
+        data.forEach(function(entry) {
+          const entryPid = entry.pid;
+          const param = entry.parameters;
+          if (!pidParamsMap[entryPid]) {
+            pidParamsMap[entryPid] = new Set();
+          }
+          pidParamsMap[entryPid].add(param);
+          var row = document.createElement("tr");
+          var timestamp = new Date(entry.timestamp).toLocaleString();
+          row.innerHTML = `
+            <td style="color: green;">${timestamp}</td>
+            <td style="color: LightGreen;">${entryPid}</td>
+            <td style="color: white;">${entry.log}</td>
+          `;
+          tbody.appendChild(row);
+        });
+
+        table.appendChild(tbody);
+        container.appendChild(table);
+
+        const containerParams = document.getElementById("pidParamsContainer");
+        if (containerParams) {
+          containerParams.innerHTML = "";
+          const renderParamsRow = function(pidValue, paramsSet) {
+            const entries = Array.from(paramsSet || []);
+            const paramString = entries.length ? entries.join(", ") : "-";
+            return `
+              <div class="pid-param-row">
+                <span class="badge bg-dark text-light pid-badge"><span class="pid-label">PID</span><span class="pid-value">${pidValue}</span></span>
+                <span class="badge bg-secondary text-dark param-badge"><span class="param-label">Parameters</span><span class="param-text">${paramString}</span></span>
+              </div>`;
+          };
+          const selectedPid = pidSelectElement ? pidSelectElement.value : "";
+          if (!selectedPid) {
+            Object.entries(pidParamsMap).forEach(function(pair) {
+              containerParams.innerHTML += renderParamsRow(pair[0], pair[1]);
+            });
+          } else {
+            const paramsSet = pidParamsMap[selectedPid];
+            if (paramsSet) {
+              containerParams.innerHTML = renderParamsRow(selectedPid, paramsSet);
+            } else {
+              containerParams.innerHTML = `<p>No logs found for PID ${selectedPid}.</p>`;
+            }
+          }
+        }
+      })
+      .catch(function(err) {
+        console.error("Error loading logs:", err);
+      });
+  }
 
   function openLogsModal(pid) {
     var pidFilter = document.getElementById("pidFilter");

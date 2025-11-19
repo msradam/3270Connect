@@ -37,7 +37,7 @@ import (
 	"github.com/shirou/gopsutil/mem"
 )
 
-const version = "1.6"
+const version = "1.6.2"
 
 var errorList []error
 var errorMutex sync.Mutex
@@ -117,6 +117,8 @@ var startDashboard = flag.Bool("dashboard", false, "Start the dashboard and open
 var enableProgressBar bool
 
 var runAppPort int
+var metricsConfigFilePath string
+var metricsOutputFilePath string
 
 type LogEntry struct {
 	PID        string    `json:"pid"`
@@ -679,6 +681,7 @@ func LaunchEmbeddedIfDoubleClicked() {
 
 func main() {
 	flag.Parse()
+	metricsConfigFilePath = configFile
 	printBanner()
 	// If no command-line parameters are provided, force dashboard mode.
 	if len(os.Args) == 1 {
@@ -733,6 +736,7 @@ func main() {
 	}
 
 	config := loadConfiguration(configFile)
+	metricsOutputFilePath = config.OutputFilePath
 	if rsaToken != "" {
 		config.Token = rsaToken
 	}
@@ -1288,13 +1292,7 @@ func runDashboard() {
 	dashboardStarted = true
 	//openDashboardEmbedded()
 	spinner, _ := pterm.DefaultSpinner.WithRemoveWhenDone(true).Start("Cleaning up old metrics - sweeping the floor!")
-	dashboardDir, err := os.UserConfigDir()
-	if err != nil {
-		pterm.Warning.Println("Can’t find config dir - defaulting to local:", err)
-		dashboardDir = filepath.Join(".", "dashboard")
-	} else {
-		dashboardDir = filepath.Join(dashboardDir, "3270Connect", "dashboard")
-	}
+	dashboardDir := dashboardMetricsDir()
 	files, err := filepath.Glob(filepath.Join(dashboardDir, "metrics_*.json"))
 	if err != nil {
 		spinner.Warning("Error listing old metrics - file system’s trolling:", err)
@@ -1321,6 +1319,8 @@ func runDashboard() {
 
 	setupConsoleHandler()
 	setupTerminalConsoleHandler()
+	setupWorkflowPreviewHandler()
+	setupOutputPreviewHandler()
 	http.HandleFunc("/dashboard", func(w http.ResponseWriter, r *http.Request) {
 		// Check if the dashboardTemplate is nil
 		if dashboardTemplate == nil {
@@ -1329,41 +1329,7 @@ func runDashboard() {
 			return
 		}
 
-		files, err := filepath.Glob(filepath.Join(dashboardDir, "metrics_*.json"))
-		if err != nil {
-			pterm.Warning.Println("Error listing metrics files:", err)
-			files = []string{}
-		}
-		var metricsList []Metrics
-		var extendedList []ExtendedMetrics
-		for _, f := range files {
-			// Check if file exists before attempting to read it
-			if _, err := os.Stat(f); os.IsNotExist(err) {
-				continue
-			}
-
-			data, err := ioutil.ReadFile(f)
-			if err != nil {
-				// File may have been deleted between Stat and ReadFile, silently continue
-				if os.IsNotExist(err) {
-					continue
-				}
-				pterm.Warning.Printf("Error reading metrics file %s: %v\n", f, err)
-				continue
-			}
-			var m Metrics
-			if err := json.Unmarshal(data, &m); err != nil {
-				pterm.Warning.Printf("Error unmarshaling metrics %s: %v\n", f, err)
-				continue
-			}
-			extendedMetric := m.extend()
-			if shouldCleanupMetric(extendedMetric) {
-				cleanupProcessArtifacts(extendedMetric.PID, f)
-				continue
-			}
-			metricsList = append(metricsList, m)
-			extendedList = append(extendedList, extendedMetric)
-		}
+		metricsList, extendedList := readDashboardMetrics(dashboardDir)
 		metricsJSON, _ := json.Marshal(metricsList)
 		autoRefresh := r.URL.Query().Get("autoRefresh")
 		refreshPeriod := r.URL.Query().Get("refreshPeriod")
@@ -1387,7 +1353,7 @@ func runDashboard() {
 		case "30":
 			sel30 = "selected"
 		}
-		agg := aggregateMetrics()
+		agg := aggregateExtendedMetrics(extendedList)
 		extendedJSON, err := json.Marshal(extendedList)
 		if err != nil {
 			pterm.Error.Printf("Error marshaling extended metrics: %v\n", err)
@@ -1445,6 +1411,22 @@ func runDashboard() {
 			}
 		}
 	})
+	http.HandleFunc("/dashboard/data", func(w http.ResponseWriter, r *http.Request) {
+		_, extendedList := readDashboardMetrics(dashboardDir)
+		payload := struct {
+			AggregatedMetrics Metrics           `json:"aggregated"`
+			ExtendedMetrics   []ExtendedMetrics `json:"extendedMetrics"`
+			Timestamp         int64             `json:"timestamp"`
+		}{
+			AggregatedMetrics: aggregateExtendedMetrics(extendedList),
+			ExtendedMetrics:   extendedList,
+			Timestamp:         time.Now().Unix(),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(payload); err != nil {
+			pterm.Warning.Printf("Failed to marshal dashboard data response: %v\n", err)
+		}
+	})
 	pterm.Info.Printf("Dashboard live at %s - check it out!\n", pterm.FgBlue.Sprintf("http://localhost:%d/dashboard", dashboardPort))
 	pterm.Println()
 	go func() {
@@ -1470,6 +1452,8 @@ type Metrics struct {
 	Params                  string    `json:"params"`
 	RuntimeDuration         int       `json:"runtimeDuration"`
 	StartTimestamp          int64     `json:"startTimestamp"`
+	ConfigFilePath          string    `json:"configFilePath,omitempty"`
+	OutputFilePath          string    `json:"outputFilePath,omitempty"`
 }
 
 type ExtendedMetrics struct {
@@ -1518,6 +1502,66 @@ func cleanupProcessArtifacts(pid int, metricsFile string) {
 	}
 }
 
+func dashboardMetricsDir() string {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		pterm.Warning.Printf("User config directory unavailable, defaulting to local dashboard folder: %v\n", err)
+		return filepath.Join(".", "dashboard")
+	}
+	return filepath.Join(configDir, "3270Connect", "dashboard")
+}
+
+func readDashboardMetrics(baseDir string) ([]Metrics, []ExtendedMetrics) {
+	files, err := filepath.Glob(filepath.Join(baseDir, "metrics_*.json"))
+	if err != nil {
+		pterm.Warning.Printf("Error listing metrics files from %s: %v\n", baseDir, err)
+		return nil, nil
+	}
+	var metricsList []Metrics
+	var extendedList []ExtendedMetrics
+	for _, f := range files {
+		if _, err := os.Stat(f); os.IsNotExist(err) {
+			continue
+		}
+
+		data, err := ioutil.ReadFile(f)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			pterm.Warning.Printf("Error reading metrics file %s: %v\n", f, err)
+			continue
+		}
+		var m Metrics
+		if err := json.Unmarshal(data, &m); err != nil {
+			pterm.Warning.Printf("Error unmarshaling metrics %s: %v\n", f, err)
+			continue
+		}
+		extendedMetric := m.extend()
+		if shouldCleanupMetric(extendedMetric) {
+			cleanupProcessArtifacts(extendedMetric.PID, f)
+			continue
+		}
+		metricsList = append(metricsList, m)
+		extendedList = append(extendedList, extendedMetric)
+	}
+	return metricsList, extendedList
+}
+
+func aggregateExtendedMetrics(metrics []ExtendedMetrics) Metrics {
+	var agg Metrics
+	for _, metric := range metrics {
+		agg.ActiveWorkflows += metric.ActiveWorkflows
+		agg.TotalWorkflowsStarted += metric.TotalWorkflowsStarted
+		agg.TotalWorkflowsCompleted += metric.TotalWorkflowsCompleted
+		agg.TotalWorkflowsFailed += metric.TotalWorkflowsFailed
+		agg.Durations = append(agg.Durations, metric.Durations...)
+		agg.CPUUsage = append(agg.CPUUsage, metric.CPUUsage...)
+		agg.MemoryUsage = append(agg.MemoryUsage, metric.MemoryUsage...)
+	}
+	return agg
+}
+
 func updateMetricsFile() {
 	cpuPercents, err := cpu.Percent(0, false)
 	var hostCPU float64 = 0
@@ -1540,6 +1584,21 @@ func updateMetricsFile() {
 	pid := os.Getpid()
 	args := os.Args[1:]
 	parameters := strings.Join(args, " ")
+	configPath := metricsConfigFilePath
+	if configPath == "" {
+		configPath = configFile
+	}
+	if configPath != "" {
+		if absPath, err := filepath.Abs(configPath); err == nil {
+			configPath = absPath
+		}
+	}
+	outputPath := metricsOutputFilePath
+	if outputPath != "" {
+		if absPath, err := filepath.Abs(outputPath); err == nil {
+			outputPath = absPath
+		}
+	}
 	metrics := Metrics{
 		PID:                     pid,
 		ActiveWorkflows:         getActiveWorkflows(),
@@ -1552,6 +1611,8 @@ func updateMetricsFile() {
 		Params:                  parameters,
 		RuntimeDuration:         runtimeDuration,
 		StartTimestamp:          programStart.Unix(),
+		ConfigFilePath:          configPath,
+		OutputFilePath:          outputPath,
 	}
 
 	// Process extended metrics by using the extend() method on metrics.
@@ -1562,13 +1623,7 @@ func updateMetricsFile() {
 		pterm.Warning.Printf("Extended metrics marshaling failed for pid %d - JSON’s sulking: %v\n", pid, err)
 		return
 	}
-	dashboardDir, err := os.UserConfigDir()
-	if err != nil {
-		pterm.Warning.Println("User config dir fetch failed - going local:", err)
-		dashboardDir = filepath.Join(".", "dashboard")
-	} else {
-		dashboardDir = filepath.Join(dashboardDir, "3270Connect", "dashboard")
-	}
+	dashboardDir := dashboardMetricsDir()
 	os.MkdirAll(dashboardDir, 0755)
 	filePath := filepath.Join(dashboardDir, fmt.Sprintf("metrics_%d.json", pid))
 	if err := ioutil.WriteFile(filePath, data, 0644); err != nil {
@@ -1810,6 +1865,95 @@ func setupTerminalConsoleHandler() {
 			w.Write([]byte(fmt.Sprintf("%s\n", entry.Log)))
 		}
 	})
+}
+
+func setupWorkflowPreviewHandler() {
+	http.HandleFunc("/dashboard/workflow", func(w http.ResponseWriter, r *http.Request) {
+		pid := r.URL.Query().Get("pid")
+		metric, err := loadExtendedMetricByPID(pid)
+		if err != nil {
+			if os.IsNotExist(err) {
+				http.Error(w, "No metrics file found for PID "+pid, http.StatusNotFound)
+			} else {
+				http.Error(w, "Unable to load metrics: "+err.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
+		configPath := metric.ConfigFilePath
+		if configPath == "" {
+			http.Error(w, "Workflow configuration is not available for PID "+pid, http.StatusNotFound)
+			return
+		}
+		file, err := os.Open(configPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				http.Error(w, "Workflow file not found: "+configPath, http.StatusNotFound)
+			} else {
+				http.Error(w, "Failed to open workflow file: "+err.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
+		defer file.Close()
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		if _, err := io.Copy(w, file); err != nil {
+			http.Error(w, "Failed to stream workflow file: "+err.Error(), http.StatusInternalServerError)
+		}
+	})
+}
+
+func setupOutputPreviewHandler() {
+	http.HandleFunc("/dashboard/output", func(w http.ResponseWriter, r *http.Request) {
+		pid := r.URL.Query().Get("pid")
+		metric, err := loadExtendedMetricByPID(pid)
+		if err != nil {
+			if os.IsNotExist(err) {
+				http.Error(w, "No metrics file found for PID "+pid, http.StatusNotFound)
+			} else {
+				http.Error(w, "Unable to load metrics: "+err.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
+		outputPath := metric.OutputFilePath
+		if outputPath == "" {
+			http.Error(w, "Output file path is not configured for PID "+pid, http.StatusNotFound)
+			return
+		}
+		file, err := os.Open(outputPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				http.Error(w, "Output file not found: "+outputPath, http.StatusNotFound)
+			} else {
+				http.Error(w, "Failed to open output file: "+err.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
+		defer file.Close()
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		if _, err := io.Copy(w, file); err != nil {
+			http.Error(w, "Failed to stream output file: "+err.Error(), http.StatusInternalServerError)
+		}
+	})
+}
+
+func loadExtendedMetricByPID(pid string) (*ExtendedMetrics, error) {
+	if pid == "" {
+		return nil, fmt.Errorf("missing pid")
+	}
+	dir := dashboardMetricsDir()
+	filePath := filepath.Join(dir, fmt.Sprintf("metrics_%s.json", pid))
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	var metric ExtendedMetrics
+	if err := json.Unmarshal(data, &metric); err != nil {
+		return nil, err
+	}
+	return &metric, nil
 }
 
 func getActiveWorkflows() int {
