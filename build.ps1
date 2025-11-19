@@ -45,9 +45,8 @@ if (-not (Test-Path "dist")) {
 
 # --- Build Windows terminal version ---
 Write-Host "Building Windows terminal version..."
-try {
-    go build -o "dist/3270Connect.exe" go3270Connect.go
-} catch {
+go build -o "dist/3270Connect.exe" .
+if ($LASTEXITCODE -ne 0) {
     Write-Error "❌ Failed to build Windows version."
     exit 1
 }
@@ -62,9 +61,8 @@ $env:GOOS = "linux"
 $env:GOARCH = "amd64"
 $env:CGO_ENABLED = "0"
 
-try {
-    go build -o "dist/3270Connect_linux" go3270Connect.go
-} catch {
+go build -o "dist/3270Connect_linux" .
+if ($LASTEXITCODE -ne 0) {
     Write-Error "❌ Failed to build Linux version."
     exit 1
 }
