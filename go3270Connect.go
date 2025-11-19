@@ -420,15 +420,19 @@ func runWorkflow(scriptPort int, config *Configuration) error {
 	activeWorkflows++
 	mutex.Unlock()
 	e := connect3270.NewEmulator(config.Host, config.Port, strconv.Itoa(scriptPort))
-	tmpFile, err := ioutil.TempFile("", "workflowOutput_")
-	if err != nil {
-		return handleError(err, fmt.Sprintf("Temp file creation failed - disk’s playing hide and seek: %v", err))
+	tmpFileName := config.OutputFilePath
+	if tmpFileName == "" {
+		tmpFile, err := ioutil.TempFile("", "workflowOutput_")
+		if err != nil {
+			return handleError(err, fmt.Sprintf("Temp file creation failed - disk’s playing hide and seek: %v", err))
+		}
+		tmpFileName = tmpFile.Name()
+		tmpFile.Close()
 	}
-	tmpFileName := tmpFile.Name()
-	tmpFile.Close()
 	e.InitializeOutput(tmpFileName, runAPI)
 	workflowFailed := false
 	var steps []Step
+	var err error
 	if config.InputFilePath != "" {
 		steps, err = loadInputFile(config.InputFilePath)
 		if err != nil {
@@ -462,19 +466,6 @@ func runWorkflow(scriptPort int, config *Configuration) error {
 	} else {
 		if connect3270.Verbose {
 			storeLog(fmt.Sprintf("Workflow for scriptPort %d completed successfully", scriptPort))
-		}
-		if config.OutputFilePath != "" {
-			_ = os.Remove(config.OutputFilePath)
-			if err := os.Rename(tmpFileName, config.OutputFilePath); err != nil {
-				pid := os.Getpid()
-				uniqueOutputPath := fmt.Sprintf("%s.%d", config.OutputFilePath, pid)
-				if err2 := os.Rename(tmpFileName, uniqueOutputPath); err2 != nil {
-					addError(err2)
-				} else if verbose {
-					pterm.Info.Printf("Renamed to unique output file: %s\n", uniqueOutputPath)
-				}
-				return err
-			}
 		}
 		atomic.AddInt64(&totalWorkflowsCompleted, 1)
 	}
@@ -1033,6 +1024,13 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 			{"Run Duration", fmt.Sprintf("%ds", elapsed), "⏱️ Completed"},
 		}).Render()
 
+	// Save summary to file
+	summaryText := generateSummaryText(finalStarted, finalCompleted, finalFailed, finalActive, avgCPU, avgMem, avgWorkflowTime, float64(elapsed))
+	summaryFile := filepath.Join("logs", fmt.Sprintf("summary_%d.txt", os.Getpid()))
+	if err := os.WriteFile(summaryFile, []byte(summaryText), 0644); err != nil {
+		pterm.Warning.Printf("Failed to save summary: %v\n", err)
+	}
+
 	// Note: If you already print the dashboard message in main, you might remove this duplicate.
 	storeLog("All workflows completed")
 	updateMetricsFile()
@@ -1123,6 +1121,21 @@ func memStatus(mem float64) string {
 	default:
 		return "🔴 High"
 	}
+}
+
+func generateSummaryText(finalStarted, finalCompleted, finalFailed int64, finalActive int, avgCPU, avgMem, avgWorkflowTime, elapsed float64) string {
+	var sb strings.Builder
+	sb.WriteString("All workflows wrapped up - Time for a victory lap!\n\n")
+	sb.WriteString("Run Summary - Performance Report\n")
+	sb.WriteString(fmt.Sprintf("Total Workflows Started: %d\n", finalStarted))
+	sb.WriteString(fmt.Sprintf("Total Workflows Completed: %d\n", finalCompleted))
+	sb.WriteString(fmt.Sprintf("Total Workflows Failed: %d\n", finalFailed))
+	sb.WriteString(fmt.Sprintf("Final Active vUsers: %d\n", finalActive))
+	sb.WriteString(fmt.Sprintf("Average CPU Usage: %.1f%%\n", avgCPU))
+	sb.WriteString(fmt.Sprintf("Average Memory Usage: %.1f%%\n", avgMem))
+	sb.WriteString(fmt.Sprintf("Average Workflow Time: %.2fs\n", avgWorkflowTime))
+	sb.WriteString(fmt.Sprintf("Run Duration: %.0fs\n", elapsed))
+	return sb.String()
 }
 
 func clear() {
@@ -1271,6 +1284,7 @@ func runDashboard() {
 	setupTerminalConsoleHandler()
 	setupWorkflowPreviewHandler()
 	setupOutputPreviewHandler()
+	setupSummaryHandler()
 	http.HandleFunc("/dashboard", func(w http.ResponseWriter, r *http.Request) {
 		// Check if the dashboardTemplate is nil
 		if dashboardTemplate == nil {
@@ -1437,7 +1451,7 @@ func isProcessRunning(pid int) bool {
 }
 
 func shouldCleanupMetric(m ExtendedMetrics) bool {
-	return !m.IsRunning
+	return !m.IsRunning && m.Status == "Killed"
 }
 
 func cleanupProcessArtifacts(pid int, metricsFile string) {
@@ -1886,6 +1900,21 @@ func setupOutputPreviewHandler() {
 		if _, err := io.Copy(w, file); err != nil {
 			http.Error(w, "Failed to stream output file: "+err.Error(), http.StatusInternalServerError)
 		}
+	})
+}
+
+func setupSummaryHandler() {
+	http.HandleFunc("/dashboard/summary", func(w http.ResponseWriter, r *http.Request) {
+		pid := r.URL.Query().Get("pid")
+		summaryFile := filepath.Join("logs", fmt.Sprintf("summary_%s.txt", pid))
+		file, err := os.Open(summaryFile)
+		if err != nil {
+			http.Error(w, "Summary not found", http.StatusNotFound)
+			return
+		}
+		defer file.Close()
+		w.Header().Set("Content-Type", "text/plain")
+		io.Copy(w, file)
 	})
 }
 

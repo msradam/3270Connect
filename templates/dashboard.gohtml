@@ -901,6 +901,15 @@
       text-shadow: 0 0 8px rgba(240, 173, 78, 0.6);
     }
 
+    .action-icon.summary {
+      color: #17a2b8;
+    }
+
+    .action-icon.summary:hover {
+      transform: scale(1.2);
+      text-shadow: 0 0 8px rgba(23, 162, 184, 0.6);
+    }
+
     /* Modern Form Controls */
     .form-control, .form-select {
       border-radius: var(--radius);
@@ -1913,6 +1922,22 @@
   </div>
 </div>
 
+<!-- Summary Modal -->
+<div class="modal fade" id="summaryModal" tabindex="-1" aria-labelledby="summaryModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content bg-dark text-light border-secondary">
+      <div class="modal-header border-bottom border-secondary">
+        <h5 class="modal-title text-light" id="summaryModalLabel">Performance Summary</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-break mb-2" style="color: #cafee9;"><strong>PID:</strong> <span id="summaryModalPid">Unknown</span></p>
+        <pre id="summaryModalContent" class="bg-black rounded p-3" style="height: 60vh; overflow: auto; color: #4effb3;">Loading summary...</pre>
+      </div>
+    </div>
+  </div>
+</div>
+
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
   var autoRefreshEnabled = {{.AutoRefreshEnabled}};
@@ -1953,6 +1978,10 @@
   var outputModalCurrentPid = null;
   var outputModalAutoRefreshEnabled = true;
   var outputModalRefreshIntervalMs = 4000;
+
+  var summaryModalElement = null;
+  var summaryModalContentElement = null;
+  var summaryModalPidElement = null;
 
   function startAutoRefresh() {
     if (autoRefreshEnabled && !refreshIntervalId && !autoRefreshPausedByModal) {
@@ -2439,6 +2468,9 @@
       if (hasOutputPath) {
         actionIcons += '<i class="fas fa-desktop action-icon output" onclick="showOutputModal(' + metric.pid + ')" data-tippy-content="Preview Output HTML"></i>';
       }
+      if (hasConfigPath && metric.status === "Ended") {
+        actionIcons += '<i class="fas fa-file-text action-icon summary" onclick="showSummaryModal(' + metric.pid + ')" data-tippy-content="View Performance Summary"></i>';
+      }
       actionIcons += '<i class="fas fa-file-alt action-icon logs" onclick="openLogsModal(' + metric.pid + ')" data-tippy-content="View Logs"></i>';
       actionIcons += '<i class="fas fa-skull-crossbones action-icon kill" onclick="confirmKill(' + metric.pid + ', \'' + (metric.params || '-dashboard') + '\')" data-tippy-content="Terminate Process"></i>';
       
@@ -2618,6 +2650,39 @@
       });
   }
 
+  function showSummaryModal(pid) {
+    if (!summaryModalElement) {
+      return;
+    }
+    if (summaryModalPidElement) {
+      summaryModalPidElement.textContent = pid;
+    }
+    if (summaryModalContentElement) {
+      summaryModalContentElement.textContent = 'Loading summary...';
+    }
+    var modalInstance = new bootstrap.Modal(summaryModalElement);
+    modalInstance.show();
+    fetch('/dashboard/summary?pid=' + encodeURIComponent(pid), { cache: 'no-store' })
+      .then(function(response) {
+        if (!response.ok) {
+          return response.text().then(function(body) {
+            throw new Error(body || response.statusText || 'Unable to load summary');
+          });
+        }
+        return response.text();
+      })
+      .then(function(text) {
+        if (summaryModalContentElement) {
+          summaryModalContentElement.textContent = text;
+        }
+      })
+      .catch(function(err) {
+        if (summaryModalContentElement) {
+          summaryModalContentElement.textContent = 'Unable to load summary: ' + err.message;
+        }
+      });
+  }
+
   function toggleOutputAutoRefresh() {
     outputModalAutoRefreshEnabled = !outputModalAutoRefreshEnabled;
     updateOutputRefreshUI();
@@ -2710,6 +2775,10 @@
     outputPreviewFrame = document.getElementById('outputPreviewFrame');
     outputModalStatusElement = document.getElementById('outputModalStatus');
     outputModalPathElement = document.getElementById('outputModalPath');
+
+    summaryModalElement = document.getElementById('summaryModal');
+    summaryModalContentElement = document.getElementById('summaryModalContent');
+    summaryModalPidElement = document.getElementById('summaryModalPid');
 
     if (durationSlider) {
       document.getElementById('durationDataPointsValue').textContent = durationSlider.value;
