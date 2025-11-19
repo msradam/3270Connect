@@ -1955,6 +1955,7 @@
   var refreshStatusElement = null;
   var pidSelectElement = null;
   var refreshIndicatorTimeout = null;
+  var processIntelligenceTippyInstances = [];
   var colorPalette = [
     'rgba(102, 126, 234, 1)',
     'rgba(75, 192, 192, 1)',
@@ -2493,6 +2494,28 @@
     });
     table.appendChild(tbody);
     pidInfoContainer.appendChild(table);
+    initializeProcessIntelligenceTooltips();
+  }
+
+  function initializeProcessIntelligenceTooltips() {
+    if (typeof tippy === 'undefined') {
+      return;
+    }
+    if (processIntelligenceTippyInstances.length) {
+      processIntelligenceTippyInstances.forEach(function(instance) {
+        if (instance && typeof instance.destroy === 'function') {
+          instance.destroy();
+        }
+      });
+      processIntelligenceTippyInstances = [];
+    }
+    processIntelligenceTippyInstances = tippy('#pidParamsContainerOnDashboard [data-tippy-content]', {
+      placement: 'top',
+      animation: 'fade',
+      theme: 'light',
+      delay: [100, 50],
+      appendTo: document.body
+    }) || [];
   }
 
   function updatePidFilterOptions(metrics) {
@@ -3295,7 +3318,7 @@
 
   document.addEventListener('DOMContentLoaded', function () {
     // Initialize default tooltips with an offset
-    tippy('[data-tippy-content]', {
+    tippy('[data-tippy-content]:not(#autoRefreshToggle):not(#refreshPeriodSelect)', {
       placement: 'top',
       animation: 'fade',
       theme: 'light',
