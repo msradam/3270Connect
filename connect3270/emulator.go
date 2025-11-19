@@ -530,7 +530,37 @@ func (e *Emulator) InitializeOutput(filePath string, runAPI bool) error {
 	// Create the output content with run details
 	outputContent := ""
 	if !runAPI {
-		outputContent += fmt.Sprintf("<html><head><title>ASCII Screen Capture</title></head><body>")
+		outputContent += fmt.Sprintf("<html><head><title>ASCII Screen Capture</title>")
+		outputContent += `<style>
+body {
+  background-color: #031611;
+  color: #4effb3;
+  font-family: 'Courier New', Courier, monospace;
+  margin: 0;
+  padding: 20px;
+}
+h1 {
+  color: #4effb3;
+  text-shadow: 0 0 16px rgba(78, 255, 176, 0.28);
+  letter-spacing: 0.06em;
+  font-size: 2em;
+  margin-bottom: 10px;
+}
+p {
+  color: #cafee9;
+  margin-bottom: 20px;
+}
+pre {
+  color: #4effb3;
+  background-color: #031611;
+  border: 1px solid rgba(78, 255, 176, 0.38);
+  padding: 15px;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-family: 'Courier New', Courier, monospace;
+  line-height: 1.4;
+}
+</style></head><body>`)
 		outputContent += fmt.Sprintf("<h1>ASCII Screen Capture</h1>")
 		outputContent += fmt.Sprintf("<p>Run Date and Time: %s</p>", currentTime)
 	}

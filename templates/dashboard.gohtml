@@ -1833,12 +1833,12 @@
   <div class="modal-dialog modal-xl modal-dialog-centered">
     <div class="modal-content bg-dark text-light border-secondary">
       <div class="modal-header border-bottom border-secondary">
-        <h5 class="modal-title" id="workflowModalLabel">Workflow JSON</h5>
+        <h5 class="modal-title text-light" id="workflowModalLabel">Workflow JSON</h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <p class="text-muted text-break mb-2"><strong>Path:</strong> <span id="workflowModalPath">Unknown</span></p>
-        <pre id="workflowModalContent" class="bg-black text-white rounded p-3" style="height: 60vh; overflow: auto;">Preparing workflow...</pre>
+        <p class="text-break mb-2" style="color: #cafee9;"><strong>Path:</strong> <span id="workflowModalPath">Unknown</span></p>
+        <pre id="workflowModalContent" class="bg-black rounded p-3" style="height: 60vh; overflow: auto; color: #4effb3;">Preparing workflow...</pre>
       </div>
     </div>
   </div>
@@ -1849,13 +1849,24 @@
   <div class="modal-dialog modal-fullscreen-lg-down modal-xl">
     <div class="modal-content bg-dark text-light border-secondary">
       <div class="modal-header border-bottom border-secondary">
-        <h5 class="modal-title" id="outputModalLabel">Live Output Preview</h5>
+        <h5 class="modal-title text-light" id="outputModalLabel">Live Output Preview</h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-2 mb-2">
-          <small class="text-muted text-break" id="outputModalPath">Output path unavailable</small>
-          <span class="text-muted small" id="outputModalStatus">Auto-refresh every 4 seconds</span>
+          <small class="text-break" style="color: #cafee9;" id="outputModalPath">Output path unavailable</small>
+          <div class="d-flex align-items-center gap-2">
+            <button id="outputRefreshToggle" class="btn btn-sm btn-outline-success" onclick="toggleOutputAutoRefresh()" title="Toggle auto-refresh">
+              <i class="fas fa-pause" id="outputRefreshIcon"></i>
+            </button>
+            <select id="outputRefreshInterval" class="form-select form-select-sm" style="width: auto; max-width: 120px;" onchange="updateOutputRefreshInterval()">
+              <option value="2000">2s</option>
+              <option value="4000" selected>4s</option>
+              <option value="8000">8s</option>
+              <option value="15000">15s</option>
+            </select>
+            <span class="small" style="color: #cafee9;" id="outputModalStatus">Auto-refresh every 4 seconds</span>
+          </div>
         </div>
         <div class="ratio ratio-16x9">
           <iframe id="outputPreviewFrame" class="rounded border border-secondary" sandbox="allow-same-origin" srcdoc="<p class='text-light'>Loading output...</p>"></iframe>
@@ -1901,6 +1912,9 @@
   var outputModalStatusElement = null;
   var outputModalPathElement = null;
   var outputModalRefreshInterval = null;
+  var outputModalCurrentPid = null;
+  var outputModalAutoRefreshEnabled = true;
+  var outputModalRefreshIntervalMs = 4000;
 
   function startAutoRefresh() {
     if (autoRefreshEnabled && !refreshIntervalId && !autoRefreshPausedByModal) {
@@ -2365,13 +2379,26 @@
       };
       var durations = metric.durations || [];
       var avgCompletionTime = durations.length ? durations.reduce(function(a, b) { return a + b; }, 0) / durations.length : NaN;
+      
+      // Determine if this process should have workflow/output buttons
+      var hasConfigPath = metric.configFilePath && metric.configFilePath.trim() !== '';
+      var hasOutputPath = metric.outputFilePath && metric.outputFilePath.trim() !== '';
+      
+      // Build action icons conditionally
+      var actionIcons = '';
+      if (hasConfigPath) {
+        actionIcons += '<i class="fas fa-file-code action-icon workflow" onclick="showWorkflowModal(' + metric.pid + ')" data-tippy-content="View Workflow JSON"></i>';
+      }
+      if (hasOutputPath) {
+        actionIcons += '<i class="fas fa-desktop action-icon output" onclick="showOutputModal(' + metric.pid + ')" data-tippy-content="Preview Output HTML"></i>';
+      }
+      actionIcons += '<i class="fas fa-file-alt action-icon logs" onclick="openLogsModal(' + metric.pid + ')" data-tippy-content="View Logs"></i>';
+      actionIcons += '<i class="fas fa-skull-crossbones action-icon kill" onclick="confirmKill(' + metric.pid + ', \'' + (metric.params || '-dashboard') + '\')" data-tippy-content="Terminate Process"></i>';
+      
       var row = document.createElement("tr");
       row.innerHTML = `
         <td style="text-align: center;">
-          <i class="fas fa-file-code action-icon workflow" onclick="showWorkflowModal(${metric.pid})" data-tippy-content="View Workflow JSON"></i>
-          <i class="fas fa-desktop action-icon output" onclick="showOutputModal(${metric.pid})" data-tippy-content="Preview Output HTML"></i>
-          <i class="fas fa-file-alt action-icon logs" onclick="openLogsModal(${metric.pid})" data-tippy-content="View Logs"></i>
-          <i class="fas fa-skull-crossbones action-icon kill" onclick="confirmKill(${metric.pid}, '${metric.params || '-dashboard'}')" data-tippy-content="Terminate Process"></i>
+          ${actionIcons}
         </td>
         <td><strong>${metric.pid}</strong></td>
         <td><span class="badge bg-info">${metric.status || 'Running'}</span></td>
@@ -2470,6 +2497,7 @@
     if (!outputModalElement) {
       return;
     }
+    outputModalCurrentPid = pid;
     var metadata = processMetadataByPid[pid] || {};
     if (outputModalPathElement) {
       outputModalPathElement.textContent = metadata.outputPath || 'Path unavailable';
@@ -2481,6 +2509,10 @@
       clearInterval(outputModalRefreshInterval);
       outputModalRefreshInterval = null;
     }
+    // Reset to default auto-refresh state
+    outputModalAutoRefreshEnabled = true;
+    updateOutputRefreshUI();
+    
     var modalInstance = new bootstrap.Modal(outputModalElement);
     modalInstance.show();
     if (!metadata.outputPath) {
@@ -2490,15 +2522,25 @@
       return;
     }
     refreshOutputModal(pid);
-    outputModalRefreshInterval = setInterval(function() {
-      refreshOutputModal(pid);
-    }, 4000);
+    startOutputModalAutoRefresh(pid);
     outputModalElement.addEventListener('hidden.bs.modal', function cleanup() {
       if (outputModalRefreshInterval) {
         clearInterval(outputModalRefreshInterval);
         outputModalRefreshInterval = null;
       }
+      outputModalCurrentPid = null;
     }, { once: true });
+  }
+
+  function startOutputModalAutoRefresh(pid) {
+    if (outputModalRefreshInterval) {
+      clearInterval(outputModalRefreshInterval);
+    }
+    if (outputModalAutoRefreshEnabled) {
+      outputModalRefreshInterval = setInterval(function() {
+        refreshOutputModal(pid);
+      }, outputModalRefreshIntervalMs);
+    }
   }
 
   function refreshOutputModal(pid) {
@@ -2527,6 +2569,57 @@
           outputModalStatusElement.textContent = 'Error loading output: ' + err.message;
         }
       });
+  }
+
+  function toggleOutputAutoRefresh() {
+    outputModalAutoRefreshEnabled = !outputModalAutoRefreshEnabled;
+    updateOutputRefreshUI();
+    if (outputModalCurrentPid) {
+      startOutputModalAutoRefresh(outputModalCurrentPid);
+    }
+  }
+
+  function updateOutputRefreshInterval() {
+    var selectElement = document.getElementById('outputRefreshInterval');
+    if (selectElement) {
+      outputModalRefreshIntervalMs = parseInt(selectElement.value);
+      if (outputModalCurrentPid && outputModalAutoRefreshEnabled) {
+        startOutputModalAutoRefresh(outputModalCurrentPid);
+      }
+      updateOutputRefreshUI();
+    }
+  }
+
+  function updateOutputRefreshUI() {
+    var toggleButton = document.getElementById('outputRefreshToggle');
+    var icon = document.getElementById('outputRefreshIcon');
+    var statusElement = document.getElementById('outputModalStatus');
+    var selectElement = document.getElementById('outputRefreshInterval');
+    
+    if (toggleButton && icon) {
+      if (outputModalAutoRefreshEnabled) {
+        toggleButton.classList.remove('btn-outline-success');
+        toggleButton.classList.add('btn-success');
+        icon.classList.remove('fa-play');
+        icon.classList.add('fa-pause');
+        toggleButton.title = 'Pause auto-refresh';
+      } else {
+        toggleButton.classList.remove('btn-success');
+        toggleButton.classList.add('btn-outline-success');
+        icon.classList.remove('fa-pause');
+        icon.classList.add('fa-play');
+        toggleButton.title = 'Resume auto-refresh';
+      }
+    }
+    
+    if (statusElement) {
+      var intervalSeconds = outputModalRefreshIntervalMs / 1000;
+      if (outputModalAutoRefreshEnabled) {
+        statusElement.textContent = 'Auto-refresh every ' + intervalSeconds + ' seconds';
+      } else {
+        statusElement.textContent = 'Auto-refresh paused';
+      }
+    }
   }
 
   function refreshDashboardData(showIndicator) {
