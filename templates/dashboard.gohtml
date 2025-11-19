@@ -81,8 +81,16 @@
     .header-actions {
       display: flex;
       flex-wrap: wrap;
-      gap: 12px;
-      align-items: center;
+      gap: 16px;
+      align-items: flex-end;
+    }
+
+    .header-actions-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-left: auto;
+      align-items: flex-end;
     }
 
     .mainframe-shell {
@@ -1107,14 +1115,21 @@
     }
 
     .auto-refresh-control {
-      display: inline-flex;
-      align-items: center;
-      gap: 12px;
-      padding: 10px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+      padding: 12px 18px;
       border-radius: var(--radius);
       border: 1px solid var(--border);
       background: rgba(78, 255, 176, 0.12);
       box-shadow: var(--shadow-sm);
+      width: 340px;
+      align-self: flex-start;
+    }
+
+    .auto-refresh-control .form-check,
+    .auto-refresh-control .form-select {
+      margin: 0;
     }
 
     .auto-refresh-control label {
@@ -1125,20 +1140,37 @@
       font-size: 0.75rem;
     }
 
-    .refresh-status {
-      display: inline-flex;
+    .auto-refresh-meta {
+      display: flex;
       align-items: center;
-      gap: 8px;
-      font-size: 0.7rem;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
+      gap: 0.85rem;
+      padding-top: 0.5rem;
+      border-top: 1px dashed rgba(255, 255, 255, 0.2);
       color: var(--muted-foreground);
     }
 
+    .auto-refresh-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+      font-size: 0.85rem;
+      text-transform: none;
+    }
+
+    .auto-refresh-info small {
+      font-size: 0.7rem;
+      letter-spacing: 0.08em;
+      color: rgba(255, 255, 255, 0.7);
+    }
+
     .refresh-indicator {
-      display: inline-flex;
+      width: 36px;
+      height: 36px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 50%;
+      display: flex;
       align-items: center;
-      gap: 6px;
+      justify-content: center;
     }
 
     .refresh-indicator .indicator-icon {
@@ -1519,29 +1551,34 @@
               <option value="60" {{if eq $refreshPeriod "60"}}selected{{end}}>60s</option>
             </select>
           </div>
+          <div class="auto-refresh-meta" aria-live="polite" aria-atomic="true">
+            <span class="refresh-indicator" id="refreshIndicator">
+              <span class="indicator-icon" id="refreshIndicatorIcon"></span>
+            </span>
+            <div class="auto-refresh-info">
+              <span id="refreshTimestamp">Last refresh: --</span>
+              <small id="refreshStatus">Waiting for the next update</small>
+            </div>
+          </div>
         </form>
-        <div class="refresh-status" aria-live="polite" aria-atomic="true">
-          <span class="refresh-indicator" id="refreshIndicator">
-            <span class="indicator-icon" id="refreshIndicatorIcon"></span>
-            <span id="refreshTimestamp">Last refresh: --</span>
-          </span>
+        <div class="header-actions-buttons">
+          <button class="interface-button" type="button" data-bs-toggle="modal" data-bs-target="#startProcessModal" data-tippy-content="Start a new 3270Connect process">
+            <i class="fas fa-rocket"></i>
+            Start Process
+          </button>
+          <button class="interface-button" type="button" data-bs-toggle="modal" data-bs-target="#startAppModal" data-tippy-content="Launch a sample 3270 app">
+            <i class="fas fa-server"></i>
+            Start App
+          </button>
+          <button class="interface-button" data-bs-toggle="modal" data-bs-target="#consoleModal" data-tippy-content="Show the console logs">
+            <i class="fas fa-terminal"></i>
+            Console Logs
+          </button>
+          <button class="interface-button" type="button" onclick="refreshDashboardData(true);" data-tippy-content="Force a manual refresh">
+            <i class="fas fa-sync-alt"></i>
+            Refresh
+          </button>
         </div>
-        <button class="interface-button" type="button" data-bs-toggle="modal" data-bs-target="#startProcessModal" data-tippy-content="Start a new 3270Connect process">
-          <i class="fas fa-rocket"></i>
-          Start Process
-        </button>
-        <button class="interface-button" type="button" data-bs-toggle="modal" data-bs-target="#startAppModal" data-tippy-content="Launch a sample 3270 app">
-          <i class="fas fa-server"></i>
-          Start App
-        </button>
-        <button class="interface-button" data-bs-toggle="modal" data-bs-target="#consoleModal" data-tippy-content="Show the console logs">
-          <i class="fas fa-terminal"></i>
-          Console Logs
-        </button>
-        <button class="interface-button" type="button" onclick="refreshDashboardData(true);" data-tippy-content="Force a manual refresh">
-          <i class="fas fa-sync-alt"></i>
-          Refresh
-        </button>
       </div>
     </header>
 
@@ -1890,6 +1927,7 @@
   var resourcesSlider = null;
   var refreshIndicatorElement = null;
   var refreshTimestampElement = null;
+  var refreshStatusElement = null;
   var pidSelectElement = null;
   var refreshIndicatorTimeout = null;
   var colorPalette = [
@@ -1972,6 +2010,9 @@
     }
 
     window.location.href = url.toString();
+    if (refreshStatusElement) {
+      refreshStatusElement.textContent = autoRefreshEnabled ? 'Idle – waiting for the next update' : 'Auto-refresh disabled';
+    }
   }
 
   function handleRefreshPeriodChange() {
@@ -2004,8 +2045,8 @@
     refreshIndicatorTimeout = setTimeout(function() {
       refreshIndicatorElement.classList.remove('active');
     }, 1200);
-    if (refreshTimestampElement) {
-      refreshTimestampElement.textContent = 'Refreshing...';
+    if (refreshStatusElement) {
+      refreshStatusElement.textContent = 'Refreshing...';
     }
   }
 
@@ -2018,6 +2059,9 @@
       timeValue = new Date();
     }
     refreshTimestampElement.textContent = 'Last refresh: ' + timeValue.toLocaleTimeString();
+    if (refreshStatusElement) {
+      refreshStatusElement.textContent = autoRefreshEnabled ? 'Idle – waiting for the next update' : 'Auto-refresh disabled';
+    }
   }
 
   function updateHeaderMetrics(aggregatedMetrics) {
@@ -2380,13 +2424,16 @@
       var durations = metric.durations || [];
       var avgCompletionTime = durations.length ? durations.reduce(function(a, b) { return a + b; }, 0) / durations.length : NaN;
       
+      var paramString = (metric.params || '').trim();
+      var normalizedParam = paramString === '' ? '-dashboard' : paramString;
       // Determine if this process should have workflow/output buttons
       var hasConfigPath = metric.configFilePath && metric.configFilePath.trim() !== '';
       var hasOutputPath = metric.outputFilePath && metric.outputFilePath.trim() !== '';
+      var showWorkflowButton = hasConfigPath && normalizedParam !== '-dashboard';
       
       // Build action icons conditionally
       var actionIcons = '';
-      if (hasConfigPath) {
+      if (showWorkflowButton) {
         actionIcons += '<i class="fas fa-file-code action-icon workflow" onclick="showWorkflowModal(' + metric.pid + ')" data-tippy-content="View Workflow JSON"></i>';
       }
       if (hasOutputPath) {
@@ -2654,6 +2701,7 @@
     resourcesSlider = document.getElementById('resourcesDataPoints');
     refreshIndicatorElement = document.getElementById('refreshIndicator');
     refreshTimestampElement = document.getElementById('refreshTimestamp');
+    refreshStatusElement = document.getElementById('refreshStatus');
     pidSelectElement = document.getElementById('pidFilter');
     workflowModalElement = document.getElementById('workflowModal');
     workflowModalContentElement = document.getElementById('workflowModalContent');
