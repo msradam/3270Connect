@@ -2306,15 +2306,10 @@ func updateKilledStatus(pid int) {
 		return
 	}
 
-	//pterm.Info.Printf("Clearing existing workflow metrics for PID %d\n", pid)
-	storeLog(fmt.Sprintf("Clearing existing workflow metrics for PID %d", pid))
+	//pterm.Info.Printf("Clearing active workflows for PID %d\n", pid)
+	storeLog(fmt.Sprintf("Clearing active workflows for killed PID %d", pid))
+	// Only clear active workflows - preserve execution statistics for accurate aggregation
 	metrics.ActiveWorkflows = 0
-	metrics.TotalWorkflowsStarted = 0
-	metrics.TotalWorkflowsCompleted = 0
-	metrics.TotalWorkflowsFailed = 0
-	metrics.Durations = []float64{}
-	metrics.CPUUsage = []float64{}
-	metrics.MemoryUsage = []float64{}
 
 	extendedMetrics := metrics.extend()
 	extendedMetrics.Status = "Killed"
