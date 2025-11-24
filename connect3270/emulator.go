@@ -246,7 +246,7 @@ func (e *Emulator) Press(key string) error {
 	return nil
 }
 
-// validateKeyboard valid if key passed by parameter if a key valid
+// validateKeyboard validates if the key passed by parameter is a valid key
 func (e *Emulator) validateKeyboard(key string) bool {
 	switch key {
 	case Tab:
