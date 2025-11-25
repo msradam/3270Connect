@@ -1000,7 +1000,6 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 	pterm.DefaultSection.WithStyle(pterm.NewStyle(pterm.FgCyan)).Println("Run Summary - Performance Report")
 	pterm.DefaultTable.
 		WithHasHeader().
-		WithBoxed(true).
 		WithLeftAlignment().
 		WithData(pterm.TableData{
 			{"Metric", "Value", "Status"},

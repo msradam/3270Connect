@@ -5,3 +5,4 @@ logs/
 
 # x3270 build artifacts
 .x3270_version
+test_build
