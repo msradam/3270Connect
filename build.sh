@@ -1,6 +1,6 @@
 #!/bin/bash
 # build.sh
-# Builds terminal and GUI versions of 3270Connect for Windows and Linux
+# Builds 3270Connect for Windows and Linux
 
 set -e
 
