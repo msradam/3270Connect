@@ -6,3 +6,8 @@ logs/
 # x3270 build artifacts
 .x3270_version
 test_build
+
+# Root-level binaries (should be in dist folder)
+/3270Connect.exe
+/3270Connect
+/3270Connect_linux
