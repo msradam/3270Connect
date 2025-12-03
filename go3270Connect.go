@@ -1175,7 +1175,7 @@ func printSingleWorkflowSummary() {
 	finalCompleted := atomic.LoadInt64(&totalWorkflowsCompleted)
 	finalFailed := atomic.LoadInt64(&totalWorkflowsFailed)
 
-	elapsed := time.Since(programStart).Seconds()
+	elapsed := int(time.Since(programStart).Seconds())
 
 	pterm.Success.Println("Workflow completed - Time for a victory lap!")
 
@@ -1197,11 +1197,11 @@ func printSingleWorkflowSummary() {
 			{"Average CPU Usage", fmt.Sprintf("%.1f%%", avgCPU), cpuStatus(avgCPU)},
 			{"Average Memory Usage", fmt.Sprintf("%.1f%%", avgMem), memStatus(avgMem)},
 			{"Average Workflow Time", fmt.Sprintf("%.2fs", avgWorkflowTime), "⏱️ Avg Duration"},
-			{"Run Duration", fmt.Sprintf("%.0fs", elapsed), "⏱️ Completed"},
+			{"Run Duration", fmt.Sprintf("%ds", elapsed), "⏱️ Completed"},
 		}).Render()
 
 	// Save summary to file
-	summaryText := generateSummaryText(finalStarted, finalCompleted, finalFailed, 0, avgCPU, avgMem, avgWorkflowTime, elapsed)
+	summaryText := generateSummaryText(finalStarted, finalCompleted, finalFailed, 0, avgCPU, avgMem, avgWorkflowTime, float64(elapsed))
 	summaryFile := filepath.Join("logs", fmt.Sprintf("summary_%d.txt", os.Getpid()))
 	if err := os.WriteFile(summaryFile, []byte(summaryText), 0644); err != nil {
 		pterm.Warning.Printf("Failed to save summary: %v\n", err)
