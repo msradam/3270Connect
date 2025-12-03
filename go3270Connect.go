@@ -737,6 +737,7 @@ func main() {
 
 		} else {
 			runWorkflow(lastUsedPort, config)
+			printSingleWorkflowSummary()
 		}
 		if concurrent > 1 && dashboardStarted {
 			pterm.Info.Printf("All workflows completed but the dashboard is still running on port %d. Press Ctrl+C to exit.", dashboardPort)
@@ -1135,6 +1136,79 @@ func generateSummaryText(finalStarted, finalCompleted, finalFailed int64, finalA
 	sb.WriteString(fmt.Sprintf("Average Workflow Time: %.2fs\n", avgWorkflowTime))
 	sb.WriteString(fmt.Sprintf("Run Duration: %.0fs\n", elapsed))
 	return sb.String()
+}
+
+func printSingleWorkflowSummary() {
+	// Calculate averages for CPU and Memory usage
+	var avgCPU, avgMem float64
+	mutex.Lock()
+	if len(cpuHistory) > 0 {
+		var cpuSum float64
+		for _, val := range cpuHistory {
+			cpuSum += val
+		}
+		avgCPU = cpuSum / float64(len(cpuHistory))
+	}
+	if len(memHistory) > 0 {
+		var memSum float64
+		for _, val := range memHistory {
+			memSum += val
+		}
+		avgMem = memSum / float64(len(memHistory))
+	}
+	mutex.Unlock()
+
+	// Calculate average workflow completion time
+	var avgWorkflowTime float64
+	timingsMutex.Lock()
+	if len(workflowDurations) > 0 {
+		var totalDuration float64
+		for _, d := range workflowDurations {
+			totalDuration += d
+		}
+		avgWorkflowTime = totalDuration / float64(len(workflowDurations))
+	}
+	timingsMutex.Unlock()
+
+	// Capture final stats
+	finalStarted := atomic.LoadInt64(&totalWorkflowsStarted)
+	finalCompleted := atomic.LoadInt64(&totalWorkflowsCompleted)
+	finalFailed := atomic.LoadInt64(&totalWorkflowsFailed)
+
+	elapsed := int(time.Since(programStart).Seconds())
+
+	pterm.Success.Println("Workflow completed - Time for a victory lap!")
+
+	// Display summary report
+	pterm.DefaultSection.WithStyle(pterm.NewStyle(pterm.FgCyan)).Println("Run Summary - Performance Report")
+	pterm.DefaultTable.
+		WithHasHeader().
+		WithLeftAlignment().
+		WithData(pterm.TableData{
+			{"Metric", "Value", "Status"},
+			{"Total Workflows Started", fmt.Sprintf("%d", finalStarted), "🚀 Launched"},
+			{"Total Workflows Completed", fmt.Sprintf("%d", finalCompleted), "✅ Done"},
+			{"Total Workflows Failed", fmt.Sprintf("%d", finalFailed), func() string {
+				if finalFailed > 0 {
+					return "💥 Oof"
+				}
+				return "🎉 Perfect"
+			}()},
+			{"Average CPU Usage", fmt.Sprintf("%.1f%%", avgCPU), cpuStatus(avgCPU)},
+			{"Average Memory Usage", fmt.Sprintf("%.1f%%", avgMem), memStatus(avgMem)},
+			{"Average Workflow Time", fmt.Sprintf("%.2fs", avgWorkflowTime), "⏱️ Avg Duration"},
+			{"Run Duration", fmt.Sprintf("%ds", elapsed), "⏱️ Completed"},
+		}).Render()
+
+	// Save summary to file
+	summaryText := generateSummaryText(finalStarted, finalCompleted, finalFailed, 0, avgCPU, avgMem, avgWorkflowTime, float64(elapsed))
+	summaryFile := filepath.Join("logs", fmt.Sprintf("summary_%d.txt", os.Getpid()))
+	if err := os.WriteFile(summaryFile, []byte(summaryText), 0644); err != nil {
+		pterm.Warning.Printf("Failed to save summary: %v\n", err)
+	}
+
+	storeLog("Workflow completed")
+	updateMetricsFile()
 }
 
 func clear() {
