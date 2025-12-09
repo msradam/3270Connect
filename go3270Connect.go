@@ -1003,7 +1003,6 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 		activeBar   *pterm.ProgressbarPrinter
 		cpuBar      *pterm.ProgressbarPrinter
 		memBar      *pterm.ProgressbarPrinter
-		liveHistory []string
 	)
 	const titleWidth = 30
 	tickerInterval := time.Second
@@ -1055,7 +1054,6 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 	} else {
 		pterm.Info.Println("Progress bar disabled. Live stats update every 2s (use -enableProgressBar for gauges).")
 		tickerInterval = 2 * time.Second
-		liveHistory = make([]string, 0, liveStatsHistoryLimit)
 	}
 
 	stopTicker = make(chan struct{})
@@ -1072,11 +1070,6 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 				started := atomic.LoadInt64(&totalWorkflowsStarted)
 				completed := atomic.LoadInt64(&totalWorkflowsCompleted)
 				failed := atomic.LoadInt64(&totalWorkflowsFailed)
-				row := ""
-				if !enableProgressBar {
-					row = formatLiveStatsRow(time.Now(), elapsed, runtimeDuration, active, workerCount, started, completed, failed, cpuVal, memVal)
-					appendLimitedString(&liveHistory, row, liveStatsHistoryLimit)
-				}
 
 				if enableProgressBar {
 					if durationBar != nil {
@@ -1098,8 +1091,8 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 						activeBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Active vUsers (%d/%d)", active, workerCount)))
 					}
 				} else {
-					panel := renderLiveStatsHistory(liveHistory)
-					fmt.Println(panel)
+					row := formatLiveStatsRow(time.Now(), elapsed, runtimeDuration, active, workerCount, started, completed, failed, cpuVal, memVal)
+					fmt.Println(row)
 				}
 
 				storeLog(fmt.Sprintf("Elapsed: %d, Active workflows: %d, CPU usage: %.2f%%, Memory usage: %.2f%%", elapsed, active, cpuVal, memVal))
@@ -1257,67 +1250,13 @@ func generateSummaryText(finalStarted, finalCompleted, finalFailed int64, finalA
 	return sb.String()
 }
 
-func renderLiveStatsHistory(rows []string) string {
-	header := liveStatsHeaderRow()
-	width := len(header)
-	title := "Live Run Stats"
-	fillerLen := width - len(title) - 3
-	if fillerLen < 0 {
-		fillerLen = 0
-	}
-	top := fmt.Sprintf("┌─ %s %s┐", title, strings.Repeat("─", fillerLen))
-	separator := liveStatsSeparatorRow(width)
-	blank := liveStatsBlankRow(width)
-	if len(rows) == 0 {
-		rows = []string{liveStatsPlaceholderRow(width, "Awaiting metrics…")}
-	}
-	var sb strings.Builder
-	sb.WriteString(top)
-	sb.WriteString("\n")
-	sb.WriteString(header)
-	sb.WriteString("\n")
-	sb.WriteString(separator)
-	sb.WriteString("\n")
-	for _, row := range rows {
-		sb.WriteString(row)
-		sb.WriteString("\n")
-	}
-	sb.WriteString(blank)
-	sb.WriteString("\n")
-	sb.WriteString(fmt.Sprintf("└%s┘", strings.Repeat("─", max(width-2, 0))))
-	return sb.String()
-}
-
-func liveStatsHeaderRow() string {
-	return fmt.Sprintf("| %-8s | %7s | %7s | %9s | %8s | %8s | %6s | %6s | %6s |",
-		"Time", "Elapsed", "Remain", "Active", "Started", "Done", "Fail", "CPU%", "MEM%")
-}
-
 func formatLiveStatsRow(ts time.Time, elapsed, runtimeDuration, active, workerCount int, started, completed, failed int64, cpuUsage, memUsage float64) string {
 	remaining := max(runtimeDuration-elapsed, 0)
 	elapsedStr := fmt.Sprintf("%ds", elapsed)
 	remainingStr := fmt.Sprintf("%ds", remaining)
 	activeStr := fmt.Sprintf("%d/%d", active, workerCount)
-	return fmt.Sprintf("| %-8s | %7s | %7s | %9s | %8d | %8d | %6d | %6.1f | %6.1f |",
+	return fmt.Sprintf("Time=%s | Elapsed=%s | Remain=%s | Active=%s | Started=%d | Done=%d | Fail=%d | CPU=%.1f%% | MEM=%.1f%%",
 		ts.Format("15:04:05"), elapsedStr, remainingStr, activeStr, started, completed, failed, cpuUsage, memUsage)
-}
-
-func liveStatsSeparatorRow(width int) string {
-	inner := max(width-4, 0)
-	return fmt.Sprintf("| %s |", strings.Repeat("─", inner))
-}
-
-func liveStatsBlankRow(width int) string {
-	inner := max(width-4, 0)
-	return fmt.Sprintf("| %s |", strings.Repeat(" ", inner))
-}
-
-func liveStatsPlaceholderRow(width int, text string) string {
-	inner := max(width-4, 0)
-	if len(text) > inner {
-		text = text[:inner]
-	}
-	return fmt.Sprintf("| %-*s |", inner, text)
 }
 
 func printSingleWorkflowSummary() {
