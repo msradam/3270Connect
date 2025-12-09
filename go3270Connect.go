@@ -1840,7 +1840,7 @@ func setupConsoleHandler() {
 									break
 								}
 								pterm.Warning.Println("Log entry decoding failed:", err)
-								break // Exit the loop but continue with other files
+								break // Exit decoding loop on error
 							}
 							filtered = append(filtered, logEntry)
 						}
@@ -1907,7 +1907,7 @@ func setupTerminalConsoleHandler() {
 									break
 								}
 								pterm.Warning.Println("Log entry decoding failed:", err)
-								break // Exit the loop but continue with other files
+								break // Exit decoding loop on error
 							}
 							filtered = append(filtered, logEntry)
 						}
