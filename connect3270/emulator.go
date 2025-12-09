@@ -426,21 +426,16 @@ func (e *Emulator) createApp() error {
 	}
 
 	go func() {
-		for retries := 0; retries < maxRetries; retries++ {
-			errMsg, _ := ioutil.ReadAll(stderr)
-			if Verbose && len(errMsg) > 0 {
-				log.Printf("3270 stderr: %s", string(errMsg))
-			}
-			if err := cmd.Wait(); err == nil {
-				if Verbose {
-					log.Printf("Successfully started 3270 instance")
-				}
-				return // Successful execution, exit the Goroutine
-			}
-			log.Printf("Error creating 3270 instance (Retry %d): %v", retries+1, err)
-			time.Sleep(retryDelay)
+		defer stderr.Close()
+		errMsg, _ := ioutil.ReadAll(stderr)
+		if Verbose && len(errMsg) > 0 {
+			log.Printf("3270 stderr: %s", string(errMsg))
 		}
-		log.Printf("Max retries reached. Could not create an instance of 3270.")
+		if err := cmd.Wait(); err != nil {
+			log.Printf("Error waiting for 3270 instance: %v", err)
+		} else if Verbose {
+			log.Printf("Successfully started 3270 instance")
+		}
 	}()
 
 	const maxAttempts = 1
