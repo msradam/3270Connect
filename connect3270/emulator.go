@@ -394,13 +394,25 @@ func (e *Emulator) GetValue(x, y, length int) (string, error) {
 	for retries := 0; retries < maxRetries; retries++ {
 		output, err := e.execCommandOutput(command)
 		if err == nil {
-			return output, nil // Successful operation, exit the retry loop
+			return normalizeAsciiData(output), nil // Successful operation, exit the retry loop
 		}
 		//log.Printf("Error executing Ascii command (Retry %d): %v\n", retries+1, err)
 		time.Sleep(retryDelay)
 	}
 
 	return "", fmt.Errorf("maximum GetValue retries reached")
+}
+
+// normalizeAsciiData trims the s3270/x3270 "data:" prefix and drops status lines.
+func normalizeAsciiData(raw string) string {
+	lines := strings.Split(raw, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "data:") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		}
+	}
+	return strings.TrimSpace(raw)
 }
 
 // CursorPosition return actual position by cursor
@@ -502,13 +514,11 @@ func (e *Emulator) createApp() error {
 	modelType := "3279-2" // Adjust this based on your application's requirements
 
 	var cmd *exec.Cmd
-	var resourceString string
-
-	// Conditional resource string based on OS
-	if runtime.GOOS == "windows" {
+	resourceString := "x3270.unlockDelay: False"
+	if Headless {
+		resourceString = "s3270.unlockDelay: False"
+	} else if runtime.GOOS == "windows" {
 		resourceString = "wc3270.unlockDelay: False"
-	} else {
-		resourceString = "x3270.unlockDelay: False"
 	}
 
 	if Headless {
@@ -546,18 +556,20 @@ func (e *Emulator) createApp() error {
 		}
 	}()
 
-	const maxAttempts = 1
-	const sleepDuration = time.Second
-
-	for i := 0; i < maxAttempts; i++ {
+	const maxAttempts = 15
+	connected := false
+	for attempt := 0; attempt < maxAttempts; attempt++ {
 		if e.IsConnected() {
+			connected = true
 			break
 		}
-		time.Sleep(sleepDuration)
+		if Verbose {
+			log.Printf("Waiting for emulator session (%s) to report connected (%d/%d)", e.hostname(), attempt+1, maxAttempts)
+		}
 	}
 
-	if !e.IsConnected() {
-		return fmt.Errorf("Failed to connect to %s", e.hostname())
+	if !connected {
+		return fmt.Errorf("timed out waiting for emulator to connect to %s after %d attempts", e.hostname(), maxAttempts)
 	}
 
 	return nil

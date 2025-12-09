@@ -2503,20 +2503,64 @@ func updateKilledStatus(pid int) {
 }
 
 func loadInjectionData(filePath string) ([]map[string]string, error) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	var injectData []map[string]string
-	decoder := json.NewDecoder(file)
-	err = decoder.Decode(&injectData)
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, err
 	}
 
-	return injectData, nil
+	var raw interface{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("failed to parse injection data: %w", err)
+	}
+
+	convertEntries := func(items []interface{}) ([]map[string]string, error) {
+		entries := make([]map[string]string, 0, len(items))
+		for idx, item := range items {
+			obj, ok := item.(map[string]interface{})
+			if !ok {
+				return nil, fmt.Errorf("injection entry %d must be an object", idx)
+			}
+			entry := make(map[string]string, len(obj))
+			for key, val := range obj {
+				entry[key] = fmt.Sprint(val)
+			}
+			entries = append(entries, entry)
+		}
+		if len(entries) == 0 {
+			return nil, fmt.Errorf("injection data contains no entries")
+		}
+		return entries, nil
+	}
+
+	switch v := raw.(type) {
+	case []interface{}:
+		return convertEntries(v)
+	case map[string]interface{}:
+		// Support wrappers like {"entries": [...] } or {"data": [...]}.
+		if entriesVal, ok := v["entries"]; ok {
+			if arr, ok := entriesVal.([]interface{}); ok {
+				return convertEntries(arr)
+			}
+			return nil, fmt.Errorf("injection 'entries' must be an array")
+		}
+		if dataVal, ok := v["data"]; ok {
+			if arr, ok := dataVal.([]interface{}); ok {
+				return convertEntries(arr)
+			}
+			return nil, fmt.Errorf("injection 'data' must be an array")
+		}
+		// Treat plain object as a single entry.
+		entry := make(map[string]string, len(v))
+		for key, val := range v {
+			entry[key] = fmt.Sprint(val)
+		}
+		if len(entry) == 0 {
+			return nil, fmt.Errorf("injection object is empty")
+		}
+		return []map[string]string{entry}, nil
+	default:
+		return nil, fmt.Errorf("unsupported injection data format")
+	}
 }
 
 func injectDynamicValues(config *Configuration, injection map[string]string) *Configuration {
