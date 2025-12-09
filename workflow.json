@@ -1,9 +1,10 @@
 {
   "Host": "127.0.0.1",
   "Port": 3270,
+  "Delay": 0.75,
   "OutputFilePath": "output.html",
-  "RampUpBatchSize": 10,
-  "RampUpDelay": 1,
+  "RampUpBatchSize": 50,
+  "RampUpDelay": 1.5,
   "Steps": [
     {
       "Type": "Connect"
@@ -28,6 +29,10 @@
     },
     {
       "Type": "AsciiScreenGrab"
+    },
+    {
+      "Type": "HumanDelay",
+      "Delay": 1.5
     },
     {
       "Type": "PressEnter"

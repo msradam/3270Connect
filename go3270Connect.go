@@ -55,6 +55,7 @@ type Configuration struct {
 	Port            int
 	OutputFilePath  string `json:"OutputFilePath"`
 	Steps           []Step
+	Delay           float64 `json:"Delay,omitempty"`
 	Token           string  `json:"Token,omitempty"`
 	InputFilePath   string  `json:"InputFilePath"`
 	RampUpBatchSize int     `json:"RampUpBatchSize"`
@@ -66,6 +67,7 @@ type Step struct {
 	Type        string
 	Coordinates connect3270.Coordinates
 	Text        string
+	Delay       float64 `json:"Delay,omitempty"`
 }
 
 func resolveTokenPlaceholder(original, token string) string {
@@ -613,12 +615,19 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration) err
 		steps = config.Steps
 	}
 
-	for _, step := range steps {
+	stepDelay := secondsToDuration(config.Delay)
+	for idx, step := range steps {
 		if workflowFailed {
 			break
 		}
+		if idx > 0 && stepDelay > 0 {
+			time.Sleep(stepDelay)
+		}
 		err := executeStep(e, step, tmpFileName, config.Token)
 		if err != nil {
+			if err.Error() == "shutdown requested" {
+				break // Graceful stop: do not count as failure
+			}
 			workflowFailed = true
 			addError(err)
 		}
@@ -639,6 +648,13 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration) err
 		atomic.AddInt64(&totalWorkflowsCompleted, 1)
 	}
 	return nil
+}
+
+func secondsToDuration(seconds float64) time.Duration {
+	if seconds <= 0 {
+		return 0
+	}
+	return time.Duration(seconds * float64(time.Second))
 }
 
 func runAPIWorkflow() {
@@ -674,7 +690,11 @@ func runAPIWorkflow() {
 			sendErrorResponse(c, http.StatusInternalServerError, "Output init failed - setup’s cursed", err)
 			return
 		}
-		for _, step := range workflowConfig.Steps {
+		stepDelay := secondsToDuration(workflowConfig.Delay)
+		for idx, step := range workflowConfig.Steps {
+			if idx > 0 && stepDelay > 0 {
+				time.Sleep(stepDelay)
+			}
 			if err := executeStep(e, step, tmpFileName, workflowConfig.Token); err != nil {
 				sendErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Step '%s' failed - oof", step.Type), err)
 				e.Disconnect()
@@ -780,6 +800,13 @@ func executeStep(e *connect3270.Emulator, step Step, tmpFileName string, token s
 		return e.Press(connect3270.F23)
 	case "PressPF24":
 		return e.Press(connect3270.F24)
+	case "HumanDelay":
+		humanDelay := secondsToDuration(step.Delay)
+		if humanDelay <= 0 {
+			return fmt.Errorf("HumanDelay requires a positive Delay value")
+		}
+		time.Sleep(humanDelay)
+		return nil
 	default:
 		return fmt.Errorf("unknown step type: %s", step.Type)
 	}
@@ -1053,14 +1080,17 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 			WithShowElapsedTime(true).
 			Start()
 	} else {
-		pterm.Info.Println("Progress bar disabled. Live stats update every 2s (use -enableProgressBar for gauges).")
-		tickerInterval = 2 * time.Second
+		pterm.Info.Println("Progress bar disabled. Live stats update every 5s (use -enableProgressBar for gauges).")
+		tickerInterval = 5 * time.Second
 	}
+
+	deadline := overallStart.Add(time.Duration(runtimeDuration) * time.Second)
 
 	stopTicker = make(chan struct{})
 	go func() {
 		ticker := time.NewTicker(tickerInterval)
 		defer ticker.Stop()
+		var lastFailCount int64
 		for {
 			select {
 			case <-ticker.C:
@@ -1093,8 +1123,9 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 					}
 				} else {
 					row := formatLiveStatsRow(time.Now(), elapsed, runtimeDuration, active, workerCount, started, completed, failed, cpuVal, memVal)
-					if failed > 0 {
+					if failed > lastFailCount {
 						pterm.Error.Println(row)
+						lastFailCount = failed
 					} else {
 						pterm.Info.Println(row)
 					}
@@ -1104,25 +1135,35 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 			case <-stopTicker:
 				return
 			}
+
+			if time.Now().After(deadline) {
+				active := getActiveWorkflows()
+				started := atomic.LoadInt64(&totalWorkflowsStarted)
+				completed := atomic.LoadInt64(&totalWorkflowsCompleted)
+				failed := atomic.LoadInt64(&totalWorkflowsFailed)
+				if active == 0 && started == completed+failed {
+					return
+				}
+			}
 		}
 	}()
 
 	injectionCursor := 0
-	deadline := overallStart.Add(time.Duration(runtimeDuration) * time.Second)
 	rampDelay := time.Duration(config.RampUpDelay * float64(time.Second))
 	if rampDelay <= 0 {
 		rampDelay = time.Second
 	}
-	ticker := time.NewTicker(rampDelay)
-	defer ticker.Stop()
 
+	firstBatch := true
+	stoppedScheduling := false
 	for time.Now().Before(deadline) {
+		if deadline.Sub(time.Now()) <= rampDelay {
+			stoppedScheduling = true
+			break // Don't launch new work when we're at/near the deadline; let in-flight finish.
+		}
 		availableSlots := workerCount - getActiveWorkflows()
 		if availableSlots <= 0 {
-			select {
-			case <-ticker.C:
-			default:
-			}
+			time.Sleep(rampDelay)
 			continue
 		}
 
@@ -1139,25 +1180,55 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 		cpuVal := getLastCPUUsage()
 		memVal := getLastMemoryUsage()
 		storeLog(fmt.Sprintf("Scheduled %d workflows, active: %d, CPU: %.2f%%, MEM: %.2f%%", startedThisBatch, active, cpuVal, memVal))
-
-		select {
-		case <-ticker.C:
-		default:
+		if active < workerCount {
+			needed := workerCount - active
+			msg := fmt.Sprintf("POWERUP Active below target: %d/%d. Scheduling added %d this batch; need %d more to hit target.", active, workerCount, startedThisBatch, needed)
+			pterm.Info.
+				WithPrefix(pterm.Prefix{Text: "POWERUP", Style: pterm.NewStyle(pterm.BgGreen, pterm.FgBlack)}).
+				WithMessageStyle(pterm.Info.MessageStyle).
+				Println(msg)
+			storeLog(msg)
 		}
+
+		if !firstBatch {
+			time.Sleep(rampDelay)
+		} else {
+			firstBatch = false
+		}
+	}
+	if stoppedScheduling {
+		remain := deadline.Sub(time.Now())
+		if remain < 0 {
+			remain = 0
+		}
+		msg := fmt.Sprintf("Stopped scheduling new workflows to honor deadline (%.1fs remaining). Increase runtime or lower ramp-up to reach target concurrency.", remain.Seconds())
+		pterm.Info.Println(msg)
+		storeLog(msg)
 	}
 
 	if enableProgressBar {
 		multi.Stop()
 	}
 
-	pterm.Info.Println("Run duration complete. Waiting for current workflows to finish...")
+	pterm.Success.Println("Run duration complete. Waiting for current workflows to finish...")
 	connect3270.RequestShutdown()
 	close(jobs)
-	workerWG.Wait()
+
+	// Wait for workers with a grace period so we don't hang indefinitely.
+	graceDone := make(chan struct{})
+	go func() {
+		workerWG.Wait()
+		close(graceDone)
+	}()
+	select {
+	case <-graceDone:
+	case <-time.After(30 * time.Second):
+		pterm.Warning.Println("Grace period elapsed while waiting for workers; forcing shutdown.")
+	}
 	storeLog("All workflows completed after runtimeDuration ended.")
 
 	if stopTicker != nil {
-		stopTicker <- struct{}{}
+		close(stopTicker)
 	}
 
 	if enableProgressBar {
@@ -1366,6 +1437,9 @@ func validateConfiguration(config *Configuration) error {
 	if config.Port <= 0 {
 		return fmt.Errorf("port is invalid - ports cant be negative silly")
 	}
+	if config.Delay < 0 {
+		return fmt.Errorf("Delay must be zero or positive")
+	}
 	if config.OutputFilePath == "" {
 		hasScreenGrab := false
 		for _, step := range config.Steps {
@@ -1386,7 +1460,13 @@ func validateConfiguration(config *Configuration) error {
 			step.Type == "PressEnter" ||
 			step.Type == "PressTab" ||
 			step.Type == "Disconnect" ||
+			step.Type == "HumanDelay" ||
 			(strings.HasPrefix(step.Type, "PressPF")) {
+			if step.Type == "HumanDelay" {
+				if step.Delay <= 0 {
+					return fmt.Errorf("HumanDelay step needs a positive Delay value")
+				}
+			}
 			continue
 		}
 		// Steps that require coordinates and text.

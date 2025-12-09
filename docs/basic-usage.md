@@ -33,6 +33,7 @@ To run a single workflow, create a JSON configuration file that describes the wo
 {
   "Host": "10.27.27.62",
   "Port": 3270,
+  "Delay": 0.75,
   "HTMLFilePath": "output.html",
   "RampUpBatchSize": 10, //optional for concurrency runs
   "RampUpDelay": 1, //optional for concurrency runs
@@ -65,6 +66,10 @@ To run a single workflow, create a JSON configuration file that describes the wo
       "Type": "AsciiScreenGrab"
     },
     {
+      "Type": "HumanDelay",
+      "Delay": 1.5
+    },
+    {
       "Type": "PressEnter"
     },
     {
@@ -82,7 +87,7 @@ To run a single workflow, create a JSON configuration file that describes the wo
 }
 ```
 
-In this example, the workflow connects to a host, captures the screen, fills a field, presses Enter, captures the screen again, and then disconnects.
+In this example, a short global `Delay` keeps the steps paced, the `HumanDelay` step adds a longer pause before pressing Enter, and the workflow connects to a host, captures the screen, fills both fields, presses Enter, captures the screen again, and then disconnects.
 
 ### Concurrent Workflows
 

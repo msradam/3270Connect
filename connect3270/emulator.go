@@ -18,6 +18,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/pterm/pterm"
+
 	"github.com/3270io/3270Connect/binaries"
 )
 
@@ -473,11 +475,13 @@ func (e *Emulator) Connect() error {
 			if err == nil {
 				break
 			}
-			log.Printf("createApp failed (attempt %d/%d): %v", attempt+1, maxRetries, err)
+			msg := fmt.Sprintf("ERROR createApp failed (attempt %d/%d): %v", attempt+1, maxRetries, err)
+			pterm.Error.Println(msg)
 			time.Sleep(retryDelay)
 		}
 		if err != nil {
-			log.Printf("Failed to create app: %v", err)
+			msg := fmt.Sprintf("ERROR failed to create app: %v", err)
+			pterm.Error.Println(msg)
 			defer e.Disconnect()
 			return fmt.Errorf("failed to create client to connect: %v", err) // Return the error immediately
 		}
