@@ -43,6 +43,7 @@ const (
 	workflowDurationHistoryLimit = 500
 	inMemoryLogLimit             = 500
 	dashboardCleanupInterval     = time.Minute
+	liveStatsHistoryLimit        = 12
 )
 
 var errorList []error
@@ -172,6 +173,16 @@ func appendLimitedLog(slice *[]LogEntry, entry LogEntry, limit int) {
 	if len(*slice) > limit {
 		excess := len(*slice) - limit
 		*slice = (*slice)[excess:]
+	}
+}
+
+func appendLimitedString(slice *[]string, value string, limit int) {
+	*slice = append(*slice, value)
+	if limit <= 0 {
+		return
+	}
+	if len(*slice) > limit {
+		*slice = (*slice)[len(*slice)-limit:]
 	}
 }
 
@@ -986,13 +997,20 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 		injectData = []map[string]string{{}}
 	}
 
-	var multi pterm.MultiPrinter
-	var durationBar *pterm.ProgressbarPrinter
-	if !enableProgressBar {
-		pterm.Info.Println("Progress bar disabled. Showing INFO log messages instead.")
-	} else {
+	var (
+		multi             pterm.MultiPrinter
+		durationBar       *pterm.ProgressbarPrinter
+		activeBar         *pterm.ProgressbarPrinter
+		cpuBar            *pterm.ProgressbarPrinter
+		memBar            *pterm.ProgressbarPrinter
+		liveArea          *pterm.AreaPrinter
+		liveHistory       []string
+		liveHeaderPrinted bool
+	)
+	const titleWidth = 30
+	tickerInterval := time.Second
+	if enableProgressBar {
 		multi = pterm.DefaultMultiPrinter
-		const titleWidth = 30
 		durationBar, _ = pterm.DefaultProgressbar.
 			WithTotal(runtimeDuration).
 			WithTitle(pterm.Sprintf("%-*s", titleWidth, "  Run Duration  ")).
@@ -1004,7 +1022,7 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 			WithShowElapsedTime(true).
 			Start()
 
-		activeBar, _ := pterm.DefaultProgressbar.
+		activeBar, _ = pterm.DefaultProgressbar.
 			WithTotal(workerCount).
 			WithTitle(pterm.Sprintf("%-*s", titleWidth, "Active vUsers")).
 			WithWriter(multi.NewWriter()).
@@ -1015,7 +1033,7 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 			WithShowElapsedTime(true).
 			Start()
 
-		cpuBar, _ := pterm.DefaultProgressbar.
+		cpuBar, _ = pterm.DefaultProgressbar.
 			WithTotal(100).
 			WithTitle(pterm.Sprintf("%-*s", titleWidth, "CPU Usage")).
 			WithWriter(multi.NewWriter()).
@@ -1026,7 +1044,7 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 			WithShowElapsedTime(true).
 			Start()
 
-		memBar, _ := pterm.DefaultProgressbar.
+		memBar, _ = pterm.DefaultProgressbar.
 			WithTotal(100).
 			WithTitle(pterm.Sprintf("%-*s", titleWidth, "Memory Usage")).
 			WithWriter(multi.NewWriter()).
@@ -1036,15 +1054,42 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 			WithShowCount(false).
 			WithShowElapsedTime(true).
 			Start()
+	} else {
+		pterm.Info.Println("Progress bar disabled. Live stats update every 2s (use -enableProgressBar for gauges).")
+		tickerInterval = 2 * time.Second
+		if area, err := pterm.DefaultArea.
+			WithRemoveWhenDone(false).
+			WithFullscreen(false).
+			Start(); err != nil {
+			pterm.Warning.Printf("Unable to start live stats panel: %v\n", err)
+		} else {
+			liveArea = area
+			liveArea.Update(pterm.DefaultBox.WithTitle("Live Run Stats").Sprint("Collecting metrics…"))
+		}
+		liveHistory = make([]string, 0, liveStatsHistoryLimit)
+	}
 
-		stopTicker = make(chan struct{})
-		go func() {
-			ticker := time.NewTicker(1 * time.Second)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ticker.C:
-					elapsed := int(time.Since(overallStart).Seconds())
+	stopTicker = make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(tickerInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				elapsed := int(time.Since(overallStart).Seconds())
+				active := getActiveWorkflows()
+				cpuVal := getLastCPUUsage()
+				memVal := getLastMemoryUsage()
+				started := atomic.LoadInt64(&totalWorkflowsStarted)
+				completed := atomic.LoadInt64(&totalWorkflowsCompleted)
+				failed := atomic.LoadInt64(&totalWorkflowsFailed)
+				row := ""
+				if !enableProgressBar {
+					row = formatLiveStatsRow(time.Now(), elapsed, runtimeDuration, active, workerCount, started, completed, failed, cpuVal, memVal)
+					appendLimitedString(&liveHistory, row, liveStatsHistoryLimit)
+				}
+
+				if enableProgressBar {
 					if durationBar != nil {
 						durationBar.Current = min(elapsed, runtimeDuration)
 						if elapsed < runtimeDuration {
@@ -1054,25 +1099,35 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 						}
 					}
 					if cpuBar != nil {
-						cpuBar.Current = int(getLastCPUUsage())
+						cpuBar.Current = int(cpuVal)
 					}
 					if memBar != nil {
-						memBar.Current = int(getLastMemoryUsage())
+						memBar.Current = int(memVal)
 					}
 					if activeBar != nil {
-						active := getActiveWorkflows()
 						activeBar.Current = active
 						activeBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Active vUsers (%d/%d)", active, workerCount)))
 					}
-					cpuVal := getLastCPUUsage()
-					memVal := getLastMemoryUsage()
-					storeLog(fmt.Sprintf("Elapsed: %d, Active workflows: %d, CPU usage: %.2f%%, Memory usage: %.2f%%", elapsed, getActiveWorkflows(), cpuVal, memVal))
-				case <-stopTicker:
-					return
+				} else if liveArea != nil {
+					panel := renderLiveStatsHistory(liveHistory)
+					liveArea.Update(panel)
+				} else {
+					if !liveHeaderPrinted {
+						pterm.Info.Println(liveStatsHeaderRow())
+						liveHeaderPrinted = true
+					}
+					pterm.Info.Println(row)
 				}
+
+				storeLog(fmt.Sprintf("Elapsed: %d, Active workflows: %d, CPU usage: %.2f%%, Memory usage: %.2f%%", elapsed, active, cpuVal, memVal))
+			case <-stopTicker:
+				if !enableProgressBar && liveArea != nil {
+					liveArea.Stop()
+				}
+				return
 			}
-		}()
-	}
+		}
+	}()
 
 	injectionCursor := 0
 	deadline := overallStart.Add(time.Duration(runtimeDuration) * time.Second)
@@ -1106,7 +1161,7 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 		cpuVal := getLastCPUUsage()
 		memVal := getLastMemoryUsage()
 		storeLog(fmt.Sprintf("Scheduled %d workflows, active: %d, CPU: %.2f%%, MEM: %.2f%%", startedThisBatch, active, cpuVal, memVal))
-		if !enableProgressBar {
+		if !enableProgressBar && liveArea == nil {
 			pterm.Info.Println(fmt.Sprintf("Scheduled %d workflows, active: %d, CPU: %.2f%%, MEM: %.2f%%", startedThisBatch, active, cpuVal, memVal))
 		}
 
@@ -1125,8 +1180,11 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 	workerWG.Wait()
 	storeLog("All workflows completed after runtimeDuration ended.")
 
-	if enableProgressBar {
+	if stopTicker != nil {
 		stopTicker <- struct{}{}
+	}
+
+	if enableProgressBar {
 		elapsed := int(time.Since(overallStart).Seconds())
 		if durationBar != nil {
 			durationBar.WithTotal(elapsed)
@@ -1222,6 +1280,35 @@ func generateSummaryText(finalStarted, finalCompleted, finalFailed int64, finalA
 	return sb.String()
 }
 
+func renderLiveStatsHistory(rows []string) string {
+	if len(rows) == 0 {
+		return pterm.DefaultBox.WithTitle("Live Run Stats").Sprint("Awaiting metrics…")
+	}
+	header := liveStatsHeaderRow()
+	separator := strings.Repeat("─", len(header))
+	var sb strings.Builder
+	sb.WriteString(header)
+	sb.WriteString("\n")
+	sb.WriteString(separator)
+	sb.WriteString("\n")
+	for _, row := range rows {
+		sb.WriteString(row)
+		sb.WriteString("\n")
+	}
+	return pterm.DefaultBox.WithTitle("Live Run Stats").Sprint(sb.String())
+}
+
+func liveStatsHeaderRow() string {
+	return fmt.Sprintf("%-8s | %6s | %6s | %9s | %8s | %8s | %6s | %6s | %6s",
+		"Time", "Elapsed", "Remain", "Active", "Started", "Done", "Fail", "CPU%", "MEM%")
+}
+
+func formatLiveStatsRow(ts time.Time, elapsed, runtimeDuration, active, workerCount int, started, completed, failed int64, cpuUsage, memUsage float64) string {
+	remaining := max(runtimeDuration-elapsed, 0)
+	return fmt.Sprintf("%-8s | %6ds | %6ds | %4d/%-4d | %8d | %8d | %6d | %6.1f | %6.1f",
+		ts.Format("15:04:05"), elapsed, remaining, active, workerCount, started, completed, failed, cpuUsage, memUsage)
+}
+
 func printSingleWorkflowSummary() {
 	avgCPU := getAverageCPUUsage()
 	avgMem := getAverageMemoryUsage()
@@ -1301,6 +1388,13 @@ func isPortAvailable(port int) bool {
 
 func min(a, b int) int {
 	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a, b int) int {
+	if a > b {
 		return a
 	}
 	return b
