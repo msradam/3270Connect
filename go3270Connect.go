@@ -421,6 +421,7 @@ func runWorkflow(scriptPort int, config *Configuration) error {
 	mutex.Unlock()
 	e := connect3270.NewEmulator(config.Host, config.Port, strconv.Itoa(scriptPort))
 	tmpFileName := config.OutputFilePath
+	cleanupTempFile := false
 	if tmpFileName == "" {
 		tmpFile, err := ioutil.TempFile("", "workflowOutput_")
 		if err != nil {
@@ -428,7 +429,13 @@ func runWorkflow(scriptPort int, config *Configuration) error {
 		}
 		tmpFileName = tmpFile.Name()
 		tmpFile.Close()
+		cleanupTempFile = true
 	}
+	defer func() {
+		if cleanupTempFile {
+			os.Remove(tmpFileName)
+		}
+	}()
 	e.InitializeOutput(tmpFileName, runAPI)
 	workflowFailed := false
 	var steps []Step
@@ -497,6 +504,7 @@ func runAPIWorkflow() {
 		}
 		defer tmpFile.Close()
 		tmpFileName := tmpFile.Name()
+		defer os.Remove(tmpFileName)
 		scriptPort := getNextAvailablePort()
 		e := connect3270.NewEmulator(workflowConfig.Host, workflowConfig.Port, strconv.Itoa(scriptPort))
 		err = e.InitializeOutput(tmpFileName, true)

@@ -1,0 +1,22 @@
+--- go3270Connect.go
++++ go3270Connect.go
+@@ -421,12 +421,19 @@ func runWorkflow(scriptPort int, config *Configuration) error {
+ mutex.Unlock()
+ e := connect3270.NewEmulator(config.Host, config.Port, strconv.Itoa(scriptPort))
+ tmpFileName := config.OutputFilePath
++cleanupTempFile := false
+ if tmpFileName == "" {
+ tmpFile, err := ioutil.TempFile("", "workflowOutput_")
+ if err != nil {
+ return handleError(err, fmt.Sprintf("Temp file creation failed - disk's playing hide and seek: %v", err))
+ }
+ tmpFileName = tmpFile.Name()
+ tmpFile.Close()
++cleanupTempFile = true
+ }
++defer func() {
++if cleanupTempFile {
++os.Remove(tmpFileName)
++}
++}()
+ e.InitializeOutput(tmpFileName, runAPI)
