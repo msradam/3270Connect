@@ -1182,7 +1182,7 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 		storeLog(fmt.Sprintf("Scheduled %d workflows, active: %d, CPU: %.2f%%, MEM: %.2f%%", startedThisBatch, active, cpuVal, memVal))
 		if active < workerCount {
 			needed := workerCount - active
-			msg := fmt.Sprintf("POWERUP Active below target: %d/%d. Scheduling added %d this batch; need %d more to hit target.", active, workerCount, startedThisBatch, needed)
+			msg := fmt.Sprintf("Active below target: %d/%d. Scheduling added %d this batch; need %d more to hit target.", active, workerCount, startedThisBatch, needed)
 			pterm.Info.
 				WithPrefix(pterm.Prefix{Text: "POWERUP", Style: pterm.NewStyle(pterm.BgGreen, pterm.FgBlack)}).
 				WithMessageStyle(pterm.Info.MessageStyle).
