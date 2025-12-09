@@ -963,6 +963,7 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 		pterm.Warning.Println("Runtime duration must be greater than zero for concurrent execution.")
 		return
 	}
+	connect3270.ResetShutdown()
 	overallStart := time.Now()
 	workerCount := concurrent
 	if workerCount <= 0 {
@@ -1092,7 +1093,11 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 					}
 				} else {
 					row := formatLiveStatsRow(time.Now(), elapsed, runtimeDuration, active, workerCount, started, completed, failed, cpuVal, memVal)
-					fmt.Println(row)
+					if failed > 0 {
+						pterm.Error.Println(row)
+					} else {
+						pterm.Info.Println(row)
+					}
 				}
 
 				storeLog(fmt.Sprintf("Elapsed: %d, Active workflows: %d, CPU usage: %.2f%%, Memory usage: %.2f%%", elapsed, active, cpuVal, memVal))
@@ -1146,6 +1151,7 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 	}
 
 	pterm.Info.Println("Run duration complete. Waiting for current workflows to finish...")
+	connect3270.RequestShutdown()
 	close(jobs)
 	workerWG.Wait()
 	storeLog("All workflows completed after runtimeDuration ended.")

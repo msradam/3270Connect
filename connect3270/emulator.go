@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/3270io/3270Connect/binaries"
@@ -23,11 +24,12 @@ import (
 var (
 	// Headless controls whether go3270 runs in headless mode.
 	// Set this variable to true to enable headless mode.
-	Headless        bool
-	Verbose         bool
-	x3270BinaryPath string
-	s3270BinaryPath string
-	binaryFileMutex sync.Mutex
+	Headless          bool
+	Verbose           bool
+	x3270BinaryPath   string
+	s3270BinaryPath   string
+	binaryFileMutex   sync.Mutex
+	shutdownRequested atomic.Bool
 )
 
 // These constants represent the keyboard keys
@@ -95,6 +97,21 @@ func NewEmulator(host string, port int, scriptPort string) *Emulator {
 		Port:       port,
 		ScriptPort: scriptPort,
 	}
+}
+
+// RequestShutdown signals emulator operations to abort promptly (used when run duration expires).
+func RequestShutdown() {
+	shutdownRequested.Store(true)
+}
+
+// ResetShutdown clears the shutdown flag for a fresh run.
+func ResetShutdown() {
+	shutdownRequested.Store(false)
+}
+
+// ShutdownRequested reports whether shutdown has been requested.
+func ShutdownRequested() bool {
+	return shutdownRequested.Load()
 }
 
 func (e *Emulator) scriptAddress() (string, error) {
@@ -431,6 +448,9 @@ func (e *Emulator) Connect() error {
 
 	// Retry logic for connecting
 	for retries := 0; retries < maxRetries; retries++ {
+		if ShutdownRequested() {
+			return fmt.Errorf("shutdown requested")
+		}
 		if e.IsConnected() {
 			return nil // Successfully connected, exit the retry loop
 		}
@@ -446,6 +466,9 @@ func (e *Emulator) Connect() error {
 
 		var err error
 		for attempt := 0; attempt < maxRetries; attempt++ {
+			if ShutdownRequested() {
+				return fmt.Errorf("shutdown requested")
+			}
 			err = e.createApp()
 			if err == nil {
 				break
@@ -559,6 +582,9 @@ func (e *Emulator) createApp() error {
 	const maxAttempts = 15
 	connected := false
 	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if ShutdownRequested() {
+			return fmt.Errorf("shutdown requested")
+		}
 		if e.IsConnected() {
 			connected = true
 			break
