@@ -35,7 +35,7 @@ import (
 	"github.com/shirou/gopsutil/mem"
 )
 
-const version = "1.6.3.1"
+const version = "1.6.4"
 
 var errorList []error
 var errorMutex sync.Mutex
