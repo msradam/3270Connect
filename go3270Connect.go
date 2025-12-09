@@ -658,7 +658,7 @@ func printBanner() {
 	pterm.DefaultBasicText.Println("Website: " + pterm.LightGreen("https://3270.io"))
 	pterm.DefaultBasicText.Println("Author: " + pterm.LightGreen("EyUp"))
 
-	pterm.Info.Println("Runtime Environment: " + pterm.LightYellow("./3270Connect ") + pterm.White(strings.Join(os.Args[1:], " ")))
+	pterm.Info.Println("Runtime Environment: " + pterm.LightYellow(getExecutablePath()+" ") + pterm.White(strings.Join(os.Args[1:], " ")))
 	pterm.Println()
 }
 
