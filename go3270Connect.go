@@ -303,12 +303,49 @@ func storeLog(message string) {
 	}
 }
 
-// getExecutablePath returns the correct executable path for the current OS
+// getExecutablePath resolves the most up-to-date 3270Connect binary.
 func getExecutablePath() string {
+	exeName := "3270Connect"
+	if runtime.GOOS == "windows" {
+		exeName += ".exe"
+	}
+
+	// Build candidate list: prefer repo/dist outputs (CI), then local builds, then
+	// the currently running binary (when it already is 3270Connect).
+	candidates := make([]string, 0, 6)
+	if cwd, err := os.Getwd(); err == nil {
+		candidates = append(candidates,
+			filepath.Join(cwd, "dist", exeName),
+			filepath.Join(cwd, exeName),
+		)
+	}
+	if runningPath, err := os.Executable(); err == nil {
+		baseDir := filepath.Dir(runningPath)
+		if filepath.Base(runningPath) == exeName {
+			candidates = append(candidates, runningPath)
+		}
+		candidates = append(candidates,
+			filepath.Join(baseDir, exeName),
+			filepath.Join(baseDir, "dist", exeName),
+		)
+	}
+
+	for _, candidate := range candidates {
+		if fileExists(candidate) {
+			return candidate
+		}
+	}
+
+	// Fallback to relative paths for environments that expect the legacy layout.
 	if runtime.GOOS == "windows" {
 		return "./3270Connect.exe"
 	}
 	return "./3270Connect"
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 func loadConfiguration(filePath string) *Configuration {
