@@ -202,6 +202,14 @@ func storeLog(message string) {
 	}
 }
 
+// getExecutablePath returns the correct executable path for the current OS
+func getExecutablePath() string {
+	if runtime.GOOS == "windows" {
+		return ".\\3270Connect.exe"
+	}
+	return "./3270Connect"
+}
+
 func loadConfiguration(filePath string) *Configuration {
 	//spinner, _ := pterm.DefaultSpinner.Start("Loading config - hold onto your hats!")
 	if connect3270.Verbose {
@@ -2085,7 +2093,8 @@ func startProcessHandler(w http.ResponseWriter, r *http.Request) {
 		storeLog("Sample app mode detected")
 		runAppPort := r.FormValue("runAppPort")
 		// Construct command for sample app mode
-		command := fmt.Sprintf("./3270Connect -runApp %s -runApp-port %s", runApp, runAppPort)
+		executablePath := getExecutablePath()
+		command := fmt.Sprintf("%s -runApp %s -runApp-port %s", executablePath, runApp, runAppPort)
 		go func() {
 			pterm.Info.Printf("Executing sample app command: %s\n", command)
 			storeLog("Executing sample app command: " + command)
@@ -2209,7 +2218,7 @@ func startProcessHandler(w http.ResponseWriter, r *http.Request) {
 	tokenValue := strings.TrimSpace(r.FormValue("token"))
 
 	commandArgs := []string{
-		"./3270Connect",
+		getExecutablePath(),
 		"-config", tempFilePath,
 		"-concurrent", concurrent,
 		"-runtime", runtime,
