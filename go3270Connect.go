@@ -35,7 +35,15 @@ import (
 	"github.com/shirou/gopsutil/mem"
 )
 
-const version = "1.6.4"
+const version = "1.7"
+
+const (
+	cpuHistoryLimit              = 120
+	memHistoryLimit              = 120
+	workflowDurationHistoryLimit = 500
+	inMemoryLogLimit             = 500
+	dashboardCleanupInterval     = time.Minute
+)
 
 var errorList []error
 var errorMutex sync.Mutex
@@ -105,9 +113,19 @@ var mutex sync.Mutex
 
 var timingsMutex sync.Mutex
 var workflowDurations []float64
+var workflowDurationSum float64
+var workflowDurationCount int64
 
+var metricsMutex sync.Mutex
 var cpuHistory []float64
 var memHistory []float64
+var totalCPUUsage float64
+var totalCPUSamples int64
+var totalMemUsage float64
+var totalMemSamples int64
+var lastCPUUsage float64
+var lastMemUsage float64
+var lastCleanupRun time.Time
 
 var showVersion = flag.Bool("version", false, "Show the application version")
 var startDashboard = flag.Bool("dashboard", false, "Start the dashboard and open the webpage")
@@ -135,6 +153,89 @@ var dashboardTemplateFS embed.FS
 var dashboardTemplate *template.Template
 
 var programStart time.Time
+
+func appendLimitedFloat(slice *[]float64, value float64, limit int) {
+	*slice = append(*slice, value)
+	if limit <= 0 {
+		return
+	}
+	if len(*slice) > limit {
+		*slice = (*slice)[len(*slice)-limit:]
+	}
+}
+
+func appendLimitedLog(slice *[]LogEntry, entry LogEntry, limit int) {
+	*slice = append(*slice, entry)
+	if limit <= 0 {
+		return
+	}
+	if len(*slice) > limit {
+		excess := len(*slice) - limit
+		*slice = (*slice)[excess:]
+	}
+}
+
+func recordWorkflowDuration(duration float64) {
+	timingsMutex.Lock()
+	appendLimitedFloat(&workflowDurations, duration, workflowDurationHistoryLimit)
+	workflowDurationSum += duration
+	workflowDurationCount++
+	timingsMutex.Unlock()
+}
+
+func getAverageWorkflowDuration() float64 {
+	timingsMutex.Lock()
+	defer timingsMutex.Unlock()
+	if workflowDurationCount == 0 {
+		return 0
+	}
+	return workflowDurationSum / float64(workflowDurationCount)
+}
+
+func getAverageCPUUsage() float64 {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	if totalCPUSamples == 0 {
+		return 0
+	}
+	return totalCPUUsage / float64(totalCPUSamples)
+}
+
+func getAverageMemoryUsage() float64 {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	if totalMemSamples == 0 {
+		return 0
+	}
+	return totalMemUsage / float64(totalMemSamples)
+}
+
+func getLastCPUUsage() float64 {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	return lastCPUUsage
+}
+
+func getLastMemoryUsage() float64 {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	return lastMemUsage
+}
+
+func maybeCleanupDashboardArtifacts() {
+	metricsMutex.Lock()
+	shouldSkip := time.Since(lastCleanupRun) < dashboardCleanupInterval
+	if !shouldSkip {
+		lastCleanupRun = time.Now()
+	}
+	metricsMutex.Unlock()
+	if shouldSkip {
+		return
+	}
+	dashboardDir := dashboardMetricsDir()
+	// Trigger cleanup by reading and evaluating metrics files.
+	readDashboardMetrics(dashboardDir)
+}
 
 func init() {
 	flag.StringVar(&configFile, "config", "workflow.json", "Path to the configuration file")
@@ -186,7 +287,7 @@ func storeLog(message string) {
 		Log:        message,
 		Timestamp:  time.Now(),
 	}
-	inMemoryLogs = append(inMemoryLogs, logEntry)
+	appendLimitedLog(&inMemoryLogs, logEntry, inMemoryLogLimit)
 
 	logFilePath := filepath.Join("logs", fmt.Sprintf("logs_%d.json", pid))
 	file, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -418,16 +519,23 @@ func loadInputFile(filePath string) ([]Step, error) {
 }
 
 func runWorkflow(scriptPort int, config *Configuration) error {
+	e := connect3270.NewEmulator(config.Host, config.Port, strconv.Itoa(scriptPort))
+	return runWorkflowWithEmulator(e, config)
+}
+
+func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration) error {
+	scriptPortLabel := e.ScriptPort
 	startTime := time.Now()
 	atomic.AddInt64(&totalWorkflowsStarted, 1)
 	if connect3270.Verbose {
-		pterm.Info.Printf("Starting workflow for scriptPort %d\n", scriptPort)
+		pterm.Info.Printf("Starting workflow for scriptPort %s\n", scriptPortLabel)
 	}
-	storeLog(fmt.Sprintf("Starting workflow for scriptPort %d", scriptPort))
+	storeLog(fmt.Sprintf("Starting workflow for scriptPort %s", scriptPortLabel))
 	mutex.Lock()
 	activeWorkflows++
 	mutex.Unlock()
-	e := connect3270.NewEmulator(config.Host, config.Port, strconv.Itoa(scriptPort))
+	e.Host = config.Host
+	e.Port = config.Port
 	tmpFileName := config.OutputFilePath
 	cleanupTempFile := false
 	if tmpFileName == "" {
@@ -472,15 +580,13 @@ func runWorkflow(scriptPort int, config *Configuration) error {
 	activeWorkflows--
 	mutex.Unlock()
 	duration := time.Since(startTime).Seconds()
-	timingsMutex.Lock()
-	workflowDurations = append(workflowDurations, duration)
-	timingsMutex.Unlock()
+	recordWorkflowDuration(duration)
 
 	if workflowFailed {
 		atomic.AddInt64(&totalWorkflowsFailed, 1)
 	} else {
 		if connect3270.Verbose {
-			storeLog(fmt.Sprintf("Workflow for scriptPort %d completed successfully", scriptPort))
+			storeLog(fmt.Sprintf("Workflow for scriptPort %s completed successfully", scriptPortLabel))
 		}
 		atomic.AddInt64(&totalWorkflowsCompleted, 1)
 	}
@@ -770,31 +876,77 @@ func setGlobalSettings() {
 
 var stopTicker chan struct{}
 
+type workflowWorker struct {
+	id       int
+	jobs     <-chan *Configuration
+	wg       *sync.WaitGroup
+	emulator *connect3270.Emulator
+}
+
+func newWorkflowWorker(id, scriptPort int, jobs <-chan *Configuration, wg *sync.WaitGroup) *workflowWorker {
+	return &workflowWorker{
+		id:       id,
+		jobs:     jobs,
+		wg:       wg,
+		emulator: connect3270.NewEmulator("", 0, strconv.Itoa(scriptPort)),
+	}
+}
+
+func (w *workflowWorker) start() {
+	defer w.wg.Done()
+	for cfg := range w.jobs {
+		if cfg == nil {
+			continue
+		}
+		w.emulator.Host = cfg.Host
+		w.emulator.Port = cfg.Port
+		if err := runWorkflowWithEmulator(w.emulator, cfg); err != nil {
+			storeLog(fmt.Sprintf("Worker %d workflow error: %v", w.id, err))
+			if connect3270.Verbose {
+				pterm.Error.Printf("Worker %d workflow error: %v\n", w.id, err)
+			}
+		}
+	}
+	_ = w.emulator.Disconnect()
+}
+
 func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
+	if runtimeDuration <= 0 {
+		pterm.Warning.Println("Runtime duration must be greater than zero for concurrent execution.")
+		return
+	}
 	overallStart := time.Now()
-	semaphore := make(chan struct{}, concurrent)
-	var wg sync.WaitGroup
+	workerCount := concurrent
+	if workerCount <= 0 {
+		workerCount = 1
+	}
+	jobs := make(chan *Configuration)
+	var workerWG sync.WaitGroup
+	for i := 0; i < workerCount; i++ {
+		workerWG.Add(1)
+		port := getNextAvailablePort()
+		worker := newWorkflowWorker(i, port, jobs, &workerWG)
+		go worker.start()
+	}
 
 	var injectData []map[string]string
-
-	// Load injection data if the file is provided
 	if injectionConfig != "" {
 		if _, err := os.Stat(injectionConfig); err == nil {
-			injectData, err = loadInjectionData(injectionConfig)
-			if err != nil {
-				pterm.Error.Printf("Failed to load injection data: %v\n", err)
+			var loadErr error
+			injectData, loadErr = loadInjectionData(injectionConfig)
+			if loadErr != nil {
+				pterm.Error.Printf("Failed to load injection data: %v\n", loadErr)
+				close(jobs)
+				workerWG.Wait()
 				return
-			} else {
-				pterm.Info.Printf("Loaded %d injection entries from %s\n", len(injectData), injectionConfig)
 			}
+			pterm.Info.Printf("Loaded %d injection entries from %s\n", len(injectData), injectionConfig)
 		} else {
 			pterm.Warning.Printf("Injection file %s not found. Proceeding without injection.\n", injectionConfig)
 		}
 	}
-
-	// Ensure we have at least one injection entry or proceed with the base configuration
 	if len(injectData) == 0 {
-		injectData = []map[string]string{{}} // Use an empty map if no injection data is provided
+		injectData = []map[string]string{{}}
 	}
 
 	var multi pterm.MultiPrinter
@@ -802,13 +954,8 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 	if !enableProgressBar {
 		pterm.Info.Println("Progress bar disabled. Showing INFO log messages instead.")
 	} else {
-		// Initialize MultiPrinter for all output
 		multi = pterm.DefaultMultiPrinter
-
-		// Define a fixed width for titles to align text
 		const titleWidth = 30
-
-		// Uniform progress bars
 		durationBar, _ = pterm.DefaultProgressbar.
 			WithTotal(runtimeDuration).
 			WithTitle(pterm.Sprintf("%-*s", titleWidth, "  Run Duration  ")).
@@ -821,7 +968,7 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 			Start()
 
 		activeBar, _ := pterm.DefaultProgressbar.
-			WithTotal(concurrent).
+			WithTotal(workerCount).
 			WithTitle(pterm.Sprintf("%-*s", titleWidth, "Active vUsers")).
 			WithWriter(multi.NewWriter()).
 			WithBarCharacter("█").
@@ -853,11 +1000,7 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 			WithShowElapsedTime(true).
 			Start()
 
-		// Start the MultiPrinter
-		// Channel to stop the progress bar updates
 		stopTicker = make(chan struct{})
-
-		// Goroutine for real-time progress bar updates
 		go func() {
 			ticker := time.NewTicker(1 * time.Second)
 			defer ticker.Stop()
@@ -874,33 +1017,19 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 						}
 					}
 					if cpuBar != nil {
-						cpuPercent, _ := cpu.Percent(0, false)
-						if len(cpuPercent) > 0 {
-							cpuBar.Current = int(cpuPercent[0])
-						}
+						cpuBar.Current = int(getLastCPUUsage())
 					}
 					if memBar != nil {
-						memStats, _ := mem.VirtualMemory()
-						if memStats != nil {
-							memBar.Current = int(memStats.UsedPercent)
-						}
+						memBar.Current = int(getLastMemoryUsage())
 					}
 					if activeBar != nil {
-						activeBar.Current = len(semaphore)
-						activeBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Active vUsers (%d/%d)", len(semaphore), concurrent)))
+						active := getActiveWorkflows()
+						activeBar.Current = active
+						activeBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Active vUsers (%d/%d)", active, workerCount)))
 					}
-					// Log status update
-					cpuPercentLog, _ := cpu.Percent(0, false)
-					memStatsLog, _ := mem.VirtualMemory()
-					cpuVal := 0.0
-					if len(cpuPercentLog) > 0 {
-						cpuVal = cpuPercentLog[0]
-					}
-					memVal := 0.0
-					if memStatsLog != nil {
-						memVal = memStatsLog.UsedPercent
-					}
-					storeLog(fmt.Sprintf("Elapsed: %d, Active workflows: %d, CPU usage: %.2f%%, Memory usage: %.2f%%", elapsed, len(semaphore), cpuVal, memVal))
+					cpuVal := getLastCPUUsage()
+					memVal := getLastMemoryUsage()
+					storeLog(fmt.Sprintf("Elapsed: %d, Active workflows: %d, CPU usage: %.2f%%, Memory usage: %.2f%%", elapsed, getActiveWorkflows(), cpuVal, memVal))
 				case <-stopTicker:
 					return
 				}
@@ -909,108 +1038,78 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 	}
 
 	injectionCursor := 0
+	deadline := overallStart.Add(time.Duration(runtimeDuration) * time.Second)
+	rampDelay := time.Duration(config.RampUpDelay * float64(time.Second))
+	if rampDelay <= 0 {
+		rampDelay = time.Second
+	}
+	ticker := time.NewTicker(rampDelay)
+	defer ticker.Stop()
 
-	// Scheduling workflows using nested loops
-	for time.Since(overallStart) < time.Duration(runtimeDuration)*time.Second {
-		for time.Since(overallStart) < time.Duration(runtimeDuration)*time.Second {
-			currentActive := len(semaphore)
-			started := startWorkflowBatch(semaphore, config, &wg, injectData, &injectionCursor)
-			if started == 0 {
-				time.Sleep(time.Duration(config.RampUpDelay * float64(time.Second)))
-				break
+	for time.Now().Before(deadline) {
+		availableSlots := workerCount - getActiveWorkflows()
+		if availableSlots <= 0 {
+			select {
+			case <-ticker.C:
+			default:
 			}
-			storeLog(fmt.Sprintf("Increasing batch by %d, current size is %d, new total target is %d",
-				started, currentActive, currentActive+started))
-			if !enableProgressBar {
-				pterm.Info.Println(fmt.Sprintf("Increasing batch by %d, current size is %d, new total target is %d",
-					started, currentActive, currentActive+started))
-			}
+			continue
+		}
 
-			cpuPercent, _ := cpu.Percent(0, false)
-			memStats, _ := mem.VirtualMemory()
-			storeLog(fmt.Sprintf("Currently active workflows: %d, CPU usage: %.2f%%, memory usage: %.2f%%",
-				len(semaphore), cpuPercent[0], memStats.UsedPercent))
-			if !enableProgressBar {
-				pterm.Info.Println(fmt.Sprintf("Currently active workflows: %d, CPU usage: %.2f%%, memory usage: %.2f%%",
-					len(semaphore), cpuPercent[0], memStats.UsedPercent))
-			}
-			time.Sleep(time.Duration(config.RampUpDelay * float64(time.Second)))
+		workflowsToStart := min(config.RampUpBatchSize, availableSlots)
+		startedThisBatch := 0
+		for startedThisBatch < workflowsToStart && time.Now().Before(deadline) {
+			cfg := injectDynamicValues(config, injectData[injectionCursor])
+			injectionCursor = (injectionCursor + 1) % len(injectData)
+			jobs <- cfg
+			startedThisBatch++
 		}
-		cpuPercent, _ := cpu.Percent(0, false)
-		memStats, _ := mem.VirtualMemory()
-		storeLog(fmt.Sprintf("Currently active workflows: %d, CPU usage: %.2f%%, memory usage: %.2f%%",
-			len(semaphore), cpuPercent[0], memStats.UsedPercent))
-		if enableProgressBar {
-			pterm.Info.Println(fmt.Sprintf("Currently active workflows: %d, CPU usage: %.2f%%, memory usage: %.2f%%",
-				len(semaphore), cpuPercent[0], memStats.UsedPercent))
+
+		active := getActiveWorkflows()
+		cpuVal := getLastCPUUsage()
+		memVal := getLastMemoryUsage()
+		storeLog(fmt.Sprintf("Scheduled %d workflows, active: %d, CPU: %.2f%%, MEM: %.2f%%", startedThisBatch, active, cpuVal, memVal))
+		if !enableProgressBar {
+			pterm.Info.Println(fmt.Sprintf("Scheduled %d workflows, active: %d, CPU: %.2f%%, MEM: %.2f%%", startedThisBatch, active, cpuVal, memVal))
 		}
-		time.Sleep(time.Duration(config.RampUpDelay * float64(time.Second)))
+
+		select {
+		case <-ticker.C:
+		default:
+		}
 	}
 
 	if enableProgressBar {
 		multi.Stop()
 	}
 
-	// Notify that no new workflows will be scheduled
 	pterm.Info.Println("Run duration complete. Waiting for current workflows to finish...")
-	wg.Wait()
+	close(jobs)
+	workerWG.Wait()
 	storeLog("All workflows completed after runtimeDuration ended.")
 
 	if enableProgressBar {
-		// Stop the progress bar updates
 		stopTicker <- struct{}{}
-
-		// Final update to duration bar
 		elapsed := int(time.Since(overallStart).Seconds())
-		durationBar.WithTotal(elapsed)
-		durationBar.Current = elapsed
-		const titleWidth = 30
-		durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Run Duration (%ds elapsed)", elapsed)))
+		if durationBar != nil {
+			durationBar.WithTotal(elapsed)
+			durationBar.Current = elapsed
+			const titleWidth = 30
+			durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Run Duration (%ds elapsed)", elapsed)))
+		}
 	}
 
-	// Calculate averages for CPU and Memory usage
-	var avgCPU, avgMem float64
-	mutex.Lock()
-	if len(cpuHistory) > 0 {
-		var cpuSum float64
-		for _, val := range cpuHistory {
-			cpuSum += val
-		}
-		avgCPU = cpuSum / float64(len(cpuHistory))
-	}
-	if len(memHistory) > 0 {
-		var memSum float64
-		for _, val := range memHistory {
-			memSum += val
-		}
-		avgMem = memSum / float64(len(memHistory))
-	}
-	mutex.Unlock()
-
-	// Calculate average workflow completion time
-	var avgWorkflowTime float64
-	timingsMutex.Lock()
-	if len(workflowDurations) > 0 {
-		var totalDuration float64
-		for _, d := range workflowDurations {
-			totalDuration += d
-		}
-		avgWorkflowTime = totalDuration / float64(len(workflowDurations))
-	}
-	timingsMutex.Unlock()
-
-	// Capture final stats
-	finalActive := len(semaphore)
+	avgCPU := getAverageCPUUsage()
+	avgMem := getAverageMemoryUsage()
+	avgWorkflowTime := getAverageWorkflowDuration()
+	finalActive := getActiveWorkflows()
 	finalStarted := atomic.LoadInt64(&totalWorkflowsStarted)
 	finalCompleted := atomic.LoadInt64(&totalWorkflowsCompleted)
 	finalFailed := atomic.LoadInt64(&totalWorkflowsFailed)
 
 	clear()
 	printBanner()
-
 	pterm.Success.Println("All workflows wrapped up - Time for a victory lap!")
-
-	// Display summary report
 	elapsed := int(time.Since(overallStart).Seconds())
 	pterm.DefaultSection.WithStyle(pterm.NewStyle(pterm.FgCyan)).Println("Run Summary - Performance Report")
 	pterm.DefaultTable.
@@ -1026,7 +1125,7 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 				}
 				return "🎉 Perfect"
 			}()},
-			{"Final Active vUsers", fmt.Sprintf("%d/%d", finalActive, concurrent), func() string {
+			{"Final Active vUsers", fmt.Sprintf("%d/%d", finalActive, workerCount), func() string {
 				if finalActive > 0 {
 					return "💥 Oof"
 				}
@@ -1038,80 +1137,14 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 			{"Run Duration", fmt.Sprintf("%ds", elapsed), "⏱️ Completed"},
 		}).Render()
 
-	// Save summary to file
 	summaryText := generateSummaryText(finalStarted, finalCompleted, finalFailed, finalActive, avgCPU, avgMem, avgWorkflowTime, float64(elapsed))
 	summaryFile := filepath.Join("logs", fmt.Sprintf("summary_%d.txt", os.Getpid()))
 	if err := os.WriteFile(summaryFile, []byte(summaryText), 0644); err != nil {
 		pterm.Warning.Printf("Failed to save summary: %v\n", err)
 	}
 
-	// Note: If you already print the dashboard message in main, you might remove this duplicate.
 	storeLog("All workflows completed")
 	updateMetricsFile()
-}
-
-func startWorkflowBatch(
-	semaphore chan struct{},
-	baseConfig *Configuration,
-	wg *sync.WaitGroup,
-	injectData []map[string]string,
-	injectionCursor *int,
-) int {
-	mutex.Lock()
-	availableSlots := concurrent - activeWorkflows
-	if availableSlots <= 0 {
-		mutex.Unlock()
-		return 0
-	}
-	workflowsToStart := min(baseConfig.RampUpBatchSize, availableSlots)
-	mutex.Unlock()
-
-	if workflowsToStart <= 0 {
-		return 0
-	}
-
-	for i := 0; i < workflowsToStart; i++ {
-		semaphore <- struct{}{}
-		wg.Add(1)
-
-		var injection map[string]string
-		if len(injectData) > 0 {
-			idx := 0
-			if injectionCursor != nil {
-				idx = *injectionCursor % len(injectData)
-				*injectionCursor++
-			}
-			injection = injectData[idx]
-		} else {
-			injection = map[string]string{}
-		}
-
-		userConfig := injectDynamicValues(baseConfig, injection)
-
-		go func(cfg *Configuration) {
-			defer func() {
-				if r := recover(); r != nil {
-					msg := fmt.Sprintf("Recovered from panic in workflow batch: %v", r)
-					storeLog(msg)
-					if connect3270.Verbose {
-						pterm.Error.Println(msg)
-					}
-				}
-			}()
-			defer wg.Done()
-			defer func() { <-semaphore }()
-
-			portToUse := getNextAvailablePort()
-			if err := runWorkflow(portToUse, cfg); err != nil {
-				storeLog(fmt.Sprintf("Workflow on port %d error: %v", portToUse, err))
-				if connect3270.Verbose {
-					pterm.Error.Printf("Workflow on port %d error: %v\n", portToUse, err)
-				}
-			}
-		}(userConfig)
-	}
-
-	return workflowsToStart
 }
 
 // Helper functions for summary status
@@ -1153,36 +1186,9 @@ func generateSummaryText(finalStarted, finalCompleted, finalFailed int64, finalA
 }
 
 func printSingleWorkflowSummary() {
-	// Calculate averages for CPU and Memory usage
-	var avgCPU, avgMem float64
-	mutex.Lock()
-	if len(cpuHistory) > 0 {
-		var cpuSum float64
-		for _, val := range cpuHistory {
-			cpuSum += val
-		}
-		avgCPU = cpuSum / float64(len(cpuHistory))
-	}
-	if len(memHistory) > 0 {
-		var memSum float64
-		for _, val := range memHistory {
-			memSum += val
-		}
-		avgMem = memSum / float64(len(memHistory))
-	}
-	mutex.Unlock()
-
-	// Calculate average workflow completion time
-	var avgWorkflowTime float64
-	timingsMutex.Lock()
-	if len(workflowDurations) > 0 {
-		var totalDuration float64
-		for _, d := range workflowDurations {
-			totalDuration += d
-		}
-		avgWorkflowTime = totalDuration / float64(len(workflowDurations))
-	}
-	timingsMutex.Unlock()
+	avgCPU := getAverageCPUUsage()
+	avgMem := getAverageMemoryUsage()
+	avgWorkflowTime := getAverageWorkflowDuration()
 
 	// Capture final stats
 	finalStarted := atomic.LoadInt64(&totalWorkflowsStarted)
@@ -1614,20 +1620,13 @@ func aggregateExtendedMetrics(metrics []ExtendedMetrics) Metrics {
 }
 
 func updateMetricsFile() {
-	cpuPercents, err := cpu.Percent(0, false)
-	var hostCPU float64 = 0
-	if err == nil && len(cpuPercents) > 0 {
-		hostCPU = cpuPercents[0]
-	}
-	memStats, err := mem.VirtualMemory()
-	var hostMem float64 = 0
-	if err == nil {
-		hostMem = memStats.UsedPercent
-	}
-	mutex.Lock()
-	cpuHistory = append(cpuHistory, hostCPU)
-	memHistory = append(memHistory, hostMem)
-	mutex.Unlock()
+	metricsMutex.Lock()
+	cpuCopy := make([]float64, len(cpuHistory))
+	copy(cpuCopy, cpuHistory)
+	memCopy := make([]float64, len(memHistory))
+	copy(memCopy, memHistory)
+	metricsMutex.Unlock()
+
 	timingsMutex.Lock()
 	durationsCopy := make([]float64, len(workflowDurations))
 	copy(durationsCopy, workflowDurations)
@@ -1657,8 +1656,8 @@ func updateMetricsFile() {
 		TotalWorkflowsCompleted: atomic.LoadInt64(&totalWorkflowsCompleted),
 		TotalWorkflowsFailed:    atomic.LoadInt64(&totalWorkflowsFailed),
 		Durations:               durationsCopy,
-		CPUUsage:                cpuHistory,
-		MemoryUsage:             memHistory,
+		CPUUsage:                cpuCopy,
+		MemoryUsage:             memCopy,
 		Params:                  parameters,
 		RuntimeDuration:         runtimeDuration,
 		StartTimestamp:          programStart.Unix(),
@@ -1680,6 +1679,7 @@ func updateMetricsFile() {
 	if err := ioutil.WriteFile(filePath, data, 0644); err != nil {
 		pterm.Warning.Printf("Metrics file write failed for pid %d - disk’s grumpy: %v\n", pid, err)
 	}
+	maybeCleanupDashboardArtifacts()
 }
 
 func aggregateMetrics() Metrics {
@@ -1769,30 +1769,30 @@ func (m Metrics) extend() ExtendedMetrics {
 func monitorSystemUsage() {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
-	
+
 	for range ticker.C {
-		cpuPercents, err := cpu.Percent(1*time.Second, true)
+		cpuPercents, err := cpu.Percent(0, false)
 		if err == nil && len(cpuPercents) > 0 {
 			var sum float64
 			for _, p := range cpuPercents {
 				sum += p
 			}
 			overall := sum / float64(len(cpuPercents))
-			mutex.Lock()
-			cpuHistory = append(cpuHistory, overall)
-			if len(cpuHistory) > 100 {
-				cpuHistory = cpuHistory[1:]
-			}
-			mutex.Unlock()
+			metricsMutex.Lock()
+			appendLimitedFloat(&cpuHistory, overall, cpuHistoryLimit)
+			totalCPUUsage += overall
+			totalCPUSamples++
+			lastCPUUsage = overall
+			metricsMutex.Unlock()
 		}
 		memStats, err := mem.VirtualMemory()
-		if err == nil {
-			mutex.Lock()
-			memHistory = append(memHistory, memStats.UsedPercent)
-			if len(memHistory) > 100 {
-				memHistory = memHistory[1:]
-			}
-			mutex.Unlock()
+		if err == nil && memStats != nil {
+			metricsMutex.Lock()
+			appendLimitedFloat(&memHistory, memStats.UsedPercent, memHistoryLimit)
+			totalMemUsage += memStats.UsedPercent
+			totalMemSamples++
+			lastMemUsage = memStats.UsedPercent
+			metricsMutex.Unlock()
 		}
 	}
 }
@@ -2039,9 +2039,6 @@ func loadExtendedMetricByPID(pid string) (*ExtendedMetrics, error) {
 }
 
 func getActiveWorkflows() int {
-	if connect3270.Verbose {
-		pterm.Info.Println("Counting active workflows - herd the cats!")
-	}
 	mutex.Lock()
 	defer mutex.Unlock()
 	return activeWorkflows
