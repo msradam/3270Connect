@@ -421,6 +421,7 @@ func runWorkflow(scriptPort int, config *Configuration) error {
 	mutex.Unlock()
 	e := connect3270.NewEmulator(config.Host, config.Port, strconv.Itoa(scriptPort))
 	tmpFileName := config.OutputFilePath
+	cleanupTempFile := false
 	if tmpFileName == "" {
 		tmpFile, err := ioutil.TempFile("", "workflowOutput_")
 		if err != nil {
@@ -428,7 +429,13 @@ func runWorkflow(scriptPort int, config *Configuration) error {
 		}
 		tmpFileName = tmpFile.Name()
 		tmpFile.Close()
+		cleanupTempFile = true
 	}
+	defer func() {
+		if cleanupTempFile {
+			os.Remove(tmpFileName)
+		}
+	}()
 	e.InitializeOutput(tmpFileName, runAPI)
 	workflowFailed := false
 	var steps []Step
@@ -497,6 +504,7 @@ func runAPIWorkflow() {
 		}
 		defer tmpFile.Close()
 		tmpFileName := tmpFile.Name()
+		defer os.Remove(tmpFileName)
 		scriptPort := getNextAvailablePort()
 		e := connect3270.NewEmulator(workflowConfig.Host, workflowConfig.Port, strconv.Itoa(scriptPort))
 		err = e.InitializeOutput(tmpFileName, true)
@@ -840,8 +848,6 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 		// Start the MultiPrinter
 		// Channel to stop the progress bar updates
 		stopTicker = make(chan struct{})
-		// Channel to stop the progress bar updates
-		stopTicker := make(chan struct{})
 
 		// Goroutine for real-time progress bar updates
 		go func() {
@@ -1753,7 +1759,10 @@ func (m Metrics) extend() ExtendedMetrics {
 }
 
 func monitorSystemUsage() {
-	for {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	
+	for range ticker.C {
 		cpuPercents, err := cpu.Percent(1*time.Second, true)
 		if err == nil && len(cpuPercents) > 0 {
 			var sum float64
@@ -1821,19 +1830,21 @@ func setupConsoleHandler() {
 						pterm.Warning.Printf("Log file %s opening failed: %v\n", lf, err)
 						continue
 					}
-					defer file.Close()
-					decoder := json.NewDecoder(file)
-					for {
-						var logEntry LogEntry
-						if err := decoder.Decode(&logEntry); err != nil {
-							if err == io.EOF {
-								break
+					func() {
+						defer file.Close()
+						decoder := json.NewDecoder(file)
+						for {
+							var logEntry LogEntry
+							if err := decoder.Decode(&logEntry); err != nil {
+								if err == io.EOF {
+									break
+								}
+								pterm.Warning.Println("Log entry decoding failed:", err)
+								break // Exit decoding loop on error
 							}
-							pterm.Warning.Println("Log entry decoding failed:", err)
-							continue
+							filtered = append(filtered, logEntry)
 						}
-						filtered = append(filtered, logEntry)
-					}
+					}()
 				}
 			}
 		}
@@ -1886,19 +1897,21 @@ func setupTerminalConsoleHandler() {
 						pterm.Warning.Printf("Log file %s opening failed: %v\n", lf, err)
 						continue
 					}
-					defer file.Close()
-					decoder := json.NewDecoder(file)
-					for {
-						var logEntry LogEntry
-						if err := decoder.Decode(&logEntry); err != nil {
-							if err == io.EOF {
-								break
+					func() {
+						defer file.Close()
+						decoder := json.NewDecoder(file)
+						for {
+							var logEntry LogEntry
+							if err := decoder.Decode(&logEntry); err != nil {
+								if err == io.EOF {
+									break
+								}
+								pterm.Warning.Println("Log entry decoding failed:", err)
+								break // Exit decoding loop on error
 							}
-							pterm.Warning.Println("Log entry decoding failed:", err)
-							continue
+							filtered = append(filtered, logEntry)
 						}
-						filtered = append(filtered, logEntry)
-					}
+					}()
 				}
 			}
 		}
