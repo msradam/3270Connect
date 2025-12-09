@@ -1,10 +1,13 @@
 package connect3270
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,12 +23,11 @@ import (
 var (
 	// Headless controls whether go3270 runs in headless mode.
 	// Set this variable to true to enable headless mode.
-	Headless          bool
-	Verbose           bool
-	x3270BinaryPath   string
-	s3270BinaryPath   string
-	x3270ifBinaryPath string
-	binaryFileMutex   sync.Mutex
+	Headless        bool
+	Verbose         bool
+	x3270BinaryPath string
+	s3270BinaryPath string
+	binaryFileMutex sync.Mutex
 )
 
 // These constants represent the keyboard keys
@@ -59,15 +61,23 @@ const (
 )
 
 const (
-	maxRetries = 10          // Maximum number of retries
-	retryDelay = time.Second // Delay between retries (e.g., 1 second)
+	maxRetries        = 10          // Maximum number of retries
+	retryDelay        = time.Second // Delay between retries (e.g., 1 second)
+	scriptDialTimeout = 5 * time.Second
+	scriptIOTimeout   = 30 * time.Second
 )
+
+var errScriptTransport = errors.New("script transport error")
 
 // Emulator base struct to x3270 terminal emulator
 type Emulator struct {
 	Host       string
 	Port       int
 	ScriptPort string
+
+	scriptConn   net.Conn
+	scriptReader *bufio.Reader
+	scriptMu     sync.Mutex
 }
 
 // Coordinates represents the screen coordinates (row and column)
@@ -85,6 +95,102 @@ func NewEmulator(host string, port int, scriptPort string) *Emulator {
 		Port:       port,
 		ScriptPort: scriptPort,
 	}
+}
+
+func (e *Emulator) scriptAddress() (string, error) {
+	port := strings.TrimSpace(e.ScriptPort)
+	if port == "" {
+		return "", fmt.Errorf("script port not set")
+	}
+	return net.JoinHostPort("127.0.0.1", port), nil
+}
+
+func (e *Emulator) ensureScriptConnLocked() error {
+	if e.scriptConn != nil {
+		return nil
+	}
+	addr, err := e.scriptAddress()
+	if err != nil {
+		return err
+	}
+	conn, err := net.DialTimeout("tcp", addr, scriptDialTimeout)
+	if err != nil {
+		return err
+	}
+	e.scriptConn = conn
+	e.scriptReader = bufio.NewReader(conn)
+	return nil
+}
+
+func (e *Emulator) closeScriptConnLocked() {
+	if e.scriptConn != nil {
+		e.scriptConn.Close()
+		e.scriptConn = nil
+	}
+	e.scriptReader = nil
+}
+
+func (e *Emulator) closeScriptConn() {
+	e.scriptMu.Lock()
+	defer e.scriptMu.Unlock()
+	e.closeScriptConnLocked()
+}
+
+func (e *Emulator) sendScriptCommand(command string) (string, error) {
+	e.scriptMu.Lock()
+	defer e.scriptMu.Unlock()
+
+	if err := e.ensureScriptConnLocked(); err != nil {
+		return "", fmt.Errorf("%w: %w", errScriptTransport, err)
+	}
+
+	conn := e.scriptConn
+	reader := e.scriptReader
+	if conn == nil || reader == nil {
+		return "", fmt.Errorf("%w: script connection not initialized", errScriptTransport)
+	}
+	deadline := time.Now().Add(scriptIOTimeout)
+	_ = conn.SetWriteDeadline(deadline)
+	if !strings.HasSuffix(command, "\n") {
+		command += "\n"
+	}
+	if _, err := io.WriteString(conn, command); err != nil {
+		e.closeScriptConnLocked()
+		return "", fmt.Errorf("%w: %w", errScriptTransport, err)
+	}
+	_ = conn.SetReadDeadline(deadline)
+	var lines []string
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			e.closeScriptConnLocked()
+			return "", fmt.Errorf("%w: %w", errScriptTransport, err)
+		}
+		trimmed := strings.TrimRight(line, "\r\n")
+		switch {
+		case trimmed == "ok":
+			return strings.Join(lines, "\n"), nil
+		case strings.HasPrefix(trimmed, "error"):
+			msg := strings.TrimSpace(strings.TrimPrefix(trimmed, "error"))
+			if msg == "" {
+				msg = "x3270 reported an error"
+			}
+			return "", errors.New(msg)
+		default:
+			lines = append(lines, trimmed)
+		}
+	}
+}
+
+func (e *Emulator) scriptRequest(command string) (string, error) {
+	output, err := e.sendScriptCommand(command)
+	if err == nil {
+		return output, nil
+	}
+	if errors.Is(err, errScriptTransport) {
+		return e.sendScriptCommand(command)
+	}
+	return "", err
 }
 
 // WaitForField waits until the screen is ready, the cursor has been positioned
@@ -365,6 +471,7 @@ func (e *Emulator) Disconnect() error {
 		}
 
 	}
+	e.closeScriptConn()
 
 	return nil
 }
@@ -380,6 +487,7 @@ func (e *Emulator) createApp() error {
 	if Verbose {
 		log.Println("func createApp: using -scriptport: " + e.ScriptPort)
 	}
+	e.closeScriptConn()
 
 	binaryFilePath, err := e.prepareBinaryFilePath()
 	if err != nil {
@@ -465,30 +573,7 @@ func (e *Emulator) execCommand(command string) (string, error) {
 	if Verbose {
 		log.Printf("Executing command: %s", command)
 	}
-
-	x3270ifBinaryPath, err := e.getX3270ifPath()
-	if err != nil {
-		return "", err
-	}
-
-	if Verbose {
-		log.Printf("func execCommand: CMD: %s -t %s %s\n", x3270ifBinaryPath, e.ScriptPort, command)
-	}
-
-	// Retry logic for executing the command
-	for retries := 0; retries < maxRetries; retries++ {
-		cmd := exec.Command(x3270ifBinaryPath, "-S", "-t", e.ScriptPort, command)
-		if output, err := cmd.Output(); err == nil {
-			return string(output), nil
-		} else if strings.Contains(err.Error(), "text file busy") {
-			//log.Printf("Error executing command (Retry %d): %v", retries+1, err)
-			time.Sleep(retryDelay)
-		} else {
-			return "", err // Exit and return error if it's not "text file busy"
-		}
-	}
-
-	return "", fmt.Errorf("maximum command execution retries reached")
+	return e.scriptRequest(command)
 }
 
 // execCommandOutput executes a command on the connected x3270 or s3270 instance based on Headless flag and returns output
@@ -496,24 +581,7 @@ func (e *Emulator) execCommandOutput(command string) (string, error) {
 	if Verbose {
 		log.Printf("Executing command with output: %s", command)
 	}
-
-	x3270ifBinaryPath, err := e.getX3270ifPath()
-	if err != nil {
-		return "", err
-	}
-
-	if Verbose {
-		log.Printf("func execCommandOutput: CMD: %s -t %s %s\n", x3270ifBinaryPath, e.ScriptPort, command)
-	}
-
-	// Execute the command using the selected binary file
-	cmd := exec.Command(x3270ifBinaryPath, "-t", e.ScriptPort, command)
-	output, err := cmd.Output()
-	if err != nil {
-		return "", err
-	}
-
-	return string(output), nil
+	return e.scriptRequest(command)
 }
 
 // InitializeOutput initializes the output file with run details
@@ -650,8 +718,6 @@ func getOrCreateBinaryFile(binaryName string) (string, error) {
 	switch binaryName {
 	case "x3270", "s3270", "wc3270":
 		filePath = filepath.Join(os.TempDir(), binaryName+getExecutableExtension())
-	case "x3270if":
-		filePath = filepath.Join(os.TempDir(), binaryName+getExecutableExtension())
 	default:
 		return "", fmt.Errorf("unknown binary name: %s", binaryName)
 	}
@@ -721,20 +787,4 @@ func (e *Emulator) prepareBinaryFilePath() (string, error) {
 	}
 
 	return *binaryFilePath, nil
-}
-
-// getX3270ifPath retrieves the path for the x3270if binary.
-func (e *Emulator) getX3270ifPath() (string, error) {
-	binaryFileMutex.Lock()
-	defer binaryFileMutex.Unlock()
-
-	if x3270ifBinaryPath == "" {
-		var err error
-		x3270ifBinaryPath, err = getOrCreateBinaryFile("x3270if")
-		if err != nil {
-			return "", err
-		}
-	}
-
-	return x3270ifBinaryPath, nil
 }
