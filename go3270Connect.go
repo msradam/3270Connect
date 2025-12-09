@@ -205,7 +205,7 @@ func storeLog(message string) {
 // getExecutablePath returns the correct executable path for the current OS
 func getExecutablePath() string {
 	if runtime.GOOS == "windows" {
-		return ".\\3270Connect.exe"
+		return "./3270Connect.exe"
 	}
 	return "./3270Connect"
 }
