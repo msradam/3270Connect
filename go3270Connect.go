@@ -998,14 +998,12 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 	}
 
 	var (
-		multi             pterm.MultiPrinter
-		durationBar       *pterm.ProgressbarPrinter
-		activeBar         *pterm.ProgressbarPrinter
-		cpuBar            *pterm.ProgressbarPrinter
-		memBar            *pterm.ProgressbarPrinter
-		liveArea          *pterm.AreaPrinter
-		liveHistory       []string
-		liveHeaderPrinted bool
+		multi       pterm.MultiPrinter
+		durationBar *pterm.ProgressbarPrinter
+		activeBar   *pterm.ProgressbarPrinter
+		cpuBar      *pterm.ProgressbarPrinter
+		memBar      *pterm.ProgressbarPrinter
+		liveHistory []string
 	)
 	const titleWidth = 30
 	tickerInterval := time.Second
@@ -1057,15 +1055,6 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 	} else {
 		pterm.Info.Println("Progress bar disabled. Live stats update every 2s (use -enableProgressBar for gauges).")
 		tickerInterval = 2 * time.Second
-		if area, err := pterm.DefaultArea.
-			WithRemoveWhenDone(false).
-			WithFullscreen(false).
-			Start(); err != nil {
-			pterm.Warning.Printf("Unable to start live stats panel: %v\n", err)
-		} else {
-			liveArea = area
-			liveArea.Update(pterm.DefaultBox.WithTitle("Live Run Stats").Sprint("Collecting metrics…"))
-		}
 		liveHistory = make([]string, 0, liveStatsHistoryLimit)
 	}
 
@@ -1108,22 +1097,13 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 						activeBar.Current = active
 						activeBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Active vUsers (%d/%d)", active, workerCount)))
 					}
-				} else if liveArea != nil {
-					panel := renderLiveStatsHistory(liveHistory)
-					liveArea.Update(panel)
 				} else {
-					if !liveHeaderPrinted {
-						pterm.Info.Println(liveStatsHeaderRow())
-						liveHeaderPrinted = true
-					}
-					pterm.Info.Println(row)
+					panel := renderLiveStatsHistory(liveHistory)
+					fmt.Println(panel)
 				}
 
 				storeLog(fmt.Sprintf("Elapsed: %d, Active workflows: %d, CPU usage: %.2f%%, Memory usage: %.2f%%", elapsed, active, cpuVal, memVal))
 			case <-stopTicker:
-				if !enableProgressBar && liveArea != nil {
-					liveArea.Stop()
-				}
 				return
 			}
 		}
@@ -1161,9 +1141,6 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 		cpuVal := getLastCPUUsage()
 		memVal := getLastMemoryUsage()
 		storeLog(fmt.Sprintf("Scheduled %d workflows, active: %d, CPU: %.2f%%, MEM: %.2f%%", startedThisBatch, active, cpuVal, memVal))
-		if !enableProgressBar && liveArea == nil {
-			pterm.Info.Println(fmt.Sprintf("Scheduled %d workflows, active: %d, CPU: %.2f%%, MEM: %.2f%%", startedThisBatch, active, cpuVal, memVal))
-		}
 
 		select {
 		case <-ticker.C:
@@ -1281,12 +1258,22 @@ func generateSummaryText(finalStarted, finalCompleted, finalFailed int64, finalA
 }
 
 func renderLiveStatsHistory(rows []string) string {
-	if len(rows) == 0 {
-		return pterm.DefaultBox.WithTitle("Live Run Stats").Sprint("Awaiting metrics…")
-	}
 	header := liveStatsHeaderRow()
-	separator := strings.Repeat("─", len(header))
+	width := len(header)
+	title := "Live Run Stats"
+	fillerLen := width - len(title) - 3
+	if fillerLen < 0 {
+		fillerLen = 0
+	}
+	top := fmt.Sprintf("┌─ %s %s┐", title, strings.Repeat("─", fillerLen))
+	separator := liveStatsSeparatorRow(width)
+	blank := liveStatsBlankRow(width)
+	if len(rows) == 0 {
+		rows = []string{liveStatsPlaceholderRow(width, "Awaiting metrics…")}
+	}
 	var sb strings.Builder
+	sb.WriteString(top)
+	sb.WriteString("\n")
 	sb.WriteString(header)
 	sb.WriteString("\n")
 	sb.WriteString(separator)
@@ -1295,18 +1282,42 @@ func renderLiveStatsHistory(rows []string) string {
 		sb.WriteString(row)
 		sb.WriteString("\n")
 	}
-	return pterm.DefaultBox.WithTitle("Live Run Stats").Sprint(sb.String())
+	sb.WriteString(blank)
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("└%s┘", strings.Repeat("─", max(width-2, 0))))
+	return sb.String()
 }
 
 func liveStatsHeaderRow() string {
-	return fmt.Sprintf("%-8s | %6s | %6s | %9s | %8s | %8s | %6s | %6s | %6s",
+	return fmt.Sprintf("| %-8s | %7s | %7s | %9s | %8s | %8s | %6s | %6s | %6s |",
 		"Time", "Elapsed", "Remain", "Active", "Started", "Done", "Fail", "CPU%", "MEM%")
 }
 
 func formatLiveStatsRow(ts time.Time, elapsed, runtimeDuration, active, workerCount int, started, completed, failed int64, cpuUsage, memUsage float64) string {
 	remaining := max(runtimeDuration-elapsed, 0)
-	return fmt.Sprintf("%-8s | %6ds | %6ds | %4d/%-4d | %8d | %8d | %6d | %6.1f | %6.1f",
-		ts.Format("15:04:05"), elapsed, remaining, active, workerCount, started, completed, failed, cpuUsage, memUsage)
+	elapsedStr := fmt.Sprintf("%ds", elapsed)
+	remainingStr := fmt.Sprintf("%ds", remaining)
+	activeStr := fmt.Sprintf("%d/%d", active, workerCount)
+	return fmt.Sprintf("| %-8s | %7s | %7s | %9s | %8d | %8d | %6d | %6.1f | %6.1f |",
+		ts.Format("15:04:05"), elapsedStr, remainingStr, activeStr, started, completed, failed, cpuUsage, memUsage)
+}
+
+func liveStatsSeparatorRow(width int) string {
+	inner := max(width-4, 0)
+	return fmt.Sprintf("| %s |", strings.Repeat("─", inner))
+}
+
+func liveStatsBlankRow(width int) string {
+	inner := max(width-4, 0)
+	return fmt.Sprintf("| %s |", strings.Repeat(" ", inner))
+}
+
+func liveStatsPlaceholderRow(width int, text string) string {
+	inner := max(width-4, 0)
+	if len(text) > inner {
+		text = text[:inner]
+	}
+	return fmt.Sprintf("| %-*s |", inner, text)
 }
 
 func printSingleWorkflowSummary() {
