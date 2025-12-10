@@ -574,6 +574,10 @@ func runWorkflow(scriptPort int, config *Configuration) error {
 }
 
 func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration) error {
+	// Check if shutdown was requested before starting workflow execution
+	if connect3270.ShutdownRequested() {
+		return nil // Graceful stop: do not count as started or failed
+	}
 	scriptPortLabel := e.ScriptPort
 	startTime := time.Now()
 	atomic.AddInt64(&totalWorkflowsStarted, 1)
@@ -971,6 +975,13 @@ func (w *workflowWorker) start() {
 	defer w.wg.Done()
 	for cfg := range w.jobs {
 		if cfg == nil {
+			continue
+		}
+		// Check if shutdown was requested before starting new workflow
+		if connect3270.ShutdownRequested() {
+			if connect3270.Verbose {
+				storeLog(fmt.Sprintf("Worker %d skipping workflow due to shutdown request", w.id))
+			}
 			continue
 		}
 		w.emulator.Host = cfg.Host
