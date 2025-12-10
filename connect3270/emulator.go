@@ -453,9 +453,6 @@ func (e *Emulator) Connect() error {
 		if ShutdownRequested() {
 			return fmt.Errorf("shutdown requested")
 		}
-		if e.IsConnected() {
-			return nil // Successfully connected, exit the retry loop
-		}
 
 		if e.ScriptPort == "" {
 			log.Println("ScriptPort not set, using default 5000")
@@ -466,38 +463,25 @@ func (e *Emulator) Connect() error {
 			log.Println("func Connect: using -scriptport: " + e.ScriptPort)
 		}
 
-		var err error
-		for attempt := 0; attempt < maxRetries; attempt++ {
-			if ShutdownRequested() {
-				return fmt.Errorf("shutdown requested")
-			}
-			err = e.createApp()
-			if err == nil {
-				break
-			}
+		// Reset any lingering script connection before the next attempt.
+		e.closeScriptConn()
+
+		if err := e.createApp(); err != nil {
 			// Don't log shutdown errors as errors - they are expected during graceful shutdown
 			if err.Error() != "shutdown requested" {
-				msg := fmt.Sprintf("ERROR createApp failed (attempt %d/%d): %v", attempt+1, maxRetries, err)
+				msg := fmt.Sprintf("ERROR createApp failed (attempt %d/%d): %v", retries+1, maxRetries, err)
 				pterm.Error.Println(msg)
 			}
 			time.Sleep(retryDelay)
-		}
-		if err != nil {
-			// Don't log shutdown errors as errors - they are expected during graceful shutdown
-			if err.Error() != "shutdown requested" {
-				msg := fmt.Sprintf("ERROR failed to create app: %v", err)
-				pterm.Error.Println(msg)
-			}
-			defer e.Disconnect()
-			return fmt.Errorf("failed to create client to connect: %v", err) // Return the error immediately
+			continue
 		}
 
-		if !e.IsConnected() {
-			//log.Printf("Failed to connect to %s (Retry %d)...", e.hostname(), retries+1)
-		} else {
+		if e.IsConnected() {
 			return nil // Successfully connected, exit the retry loop
 		}
 
+		// Emulator did not report connected; clean up and retry to avoid poisoning the worker's script port.
+		_ = e.Disconnect()
 		time.Sleep(retryDelay)
 	}
 
@@ -582,10 +566,8 @@ func (e *Emulator) createApp() error {
 		if Verbose && len(errMsg) > 0 {
 			log.Printf("3270 stderr: %s", string(errMsg))
 		}
-		if err := cmd.Wait(); err != nil {
+		if err := cmd.Wait(); err != nil && Verbose {
 			log.Printf("Error waiting for 3270 instance: %v", err)
-		} else if Verbose {
-			log.Printf("Successfully started 3270 instance")
 		}
 	}()
 
@@ -602,9 +584,15 @@ func (e *Emulator) createApp() error {
 		if Verbose {
 			log.Printf("Waiting for emulator session (%s) to report connected (%d/%d)", e.hostname(), attempt+1, maxAttempts)
 		}
+		time.Sleep(200 * time.Millisecond)
 	}
 
 	if !connected {
+		// Ensure the launched emulator process does not linger and hold the script port.
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		e.closeScriptConn()
 		return fmt.Errorf("timed out waiting for emulator to connect to %s after %d attempts", e.hostname(), maxAttempts)
 	}
 
