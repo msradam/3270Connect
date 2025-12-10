@@ -35,7 +35,7 @@ import (
 	"github.com/shirou/gopsutil/mem"
 )
 
-const version = "1.7"
+const version = "1.7.2"
 
 const (
 	cpuHistoryLimit              = 120
@@ -1200,13 +1200,9 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 		memVal := getLastMemoryUsage()
 		storeLog(fmt.Sprintf("Scheduled %d workflows, active: %d, CPU: %.2f%%, MEM: %.2f%%", startedThisBatch, active, cpuVal, memVal))
 		if active < workerCount {
-			needed := workerCount - active
-			msg := fmt.Sprintf("Active below target: %d/%d. Scheduling added %d this batch; need %d more to hit target.", active, workerCount, startedThisBatch, needed)
-			pterm.Info.
-				WithPrefix(pterm.Prefix{Text: "POWERUP", Style: pterm.NewStyle(pterm.BgGreen, pterm.FgBlack)}).
-				WithMessageStyle(pterm.Info.MessageStyle).
-				Println(msg)
-			storeLog(msg)
+			combinedMsg := formatPowerupRow(time.Now(), overallStart, runtimeDuration, active, workerCount, startedThisBatch, cpuVal, memVal)
+			pterm.Info.Println(combinedMsg)
+			storeLog(combinedMsg)
 		}
 
 		if !firstBatch {
@@ -1348,11 +1344,15 @@ func generateSummaryText(finalStarted, finalCompleted, finalFailed int64, finalA
 
 func formatLiveStatsRow(ts time.Time, elapsed, runtimeDuration, active, workerCount int, started, completed, failed int64, cpuUsage, memUsage float64) string {
 	remaining := max(runtimeDuration-elapsed, 0)
-	elapsedStr := fmt.Sprintf("%ds", elapsed)
-	remainingStr := fmt.Sprintf("%ds", remaining)
-	activeStr := fmt.Sprintf("%d/%d", active, workerCount)
-	return fmt.Sprintf("Time=%s | Elapsed=%s | Remain=%s | Active=%s | Started=%d | Done=%d | Fail=%d | CPU=%.1f%% | MEM=%.1f%%",
-		ts.Format("15:04:05"), elapsedStr, remainingStr, activeStr, started, completed, failed, cpuUsage, memUsage)
+	return fmt.Sprintf("Time=%s | Elapsed=%ds | Remain=%ds | Active %d/%d | CPU %.1f%% | MEM %.1f%% | STATUS Started=%d | Done=%d | Fail=%d",
+		ts.Format("15:04:05"), elapsed, remaining, active, workerCount, cpuUsage, memUsage, started, completed, failed)
+}
+
+func formatPowerupRow(ts time.Time, overallStart time.Time, runtimeDuration int, active, workerCount, addedThisBatch int, cpuUsage, memUsage float64) string {
+	elapsed := int(time.Since(overallStart).Seconds())
+	remaining := max(runtimeDuration-elapsed, 0)
+	return fmt.Sprintf("Time=%s | Elapsed=%ds | Remain=%ds | Active %d/%d | CPU %.1f%% | MEM %.1f%% | POWERUP +%d; %d more to hit target",
+		ts.Format("15:04:05"), elapsed, remaining, active, workerCount, cpuUsage, memUsage, addedThisBatch, workerCount-active)
 }
 
 func printSingleWorkflowSummary() {
