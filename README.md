@@ -34,6 +34,15 @@ Here are the key features of 3270Connect:
 - Runtime RSA token injection using the `-token` flag or API `Token` property, keeping one-time passwords out of workflow files.
 - Running a 3270 sample application to assist with testing workflow features.
 
+## Connection timeout and retries
+
+- The emulator script connection uses a 5-second TCP dial timeout (`scriptDialTimeout`) and a 30-second I/O deadline (`scriptIOTimeout`) when communicating with the embedded x3270/s3270 instance.  
+  Source: `connect3270/emulator.go`.
+- Establishing a TN3270 session runs through `Emulator.Connect`, which retries up to 10 times with a 1-second delay between attempts (`maxRetries`/`retryDelay`). Starting the emulator process itself is also retried up to 10 times before surfacing an error.  
+  Source: `connect3270/emulator.go`.
+- The `/testConnection` API endpoint that probes host reachability uses a 5-second TCP dial timeout when opening the socket to the TN3270 host.  
+  Source: `go3270Connect.go`.
+
 ## Documentation
 
 - [Documentation](https://3270.io)
