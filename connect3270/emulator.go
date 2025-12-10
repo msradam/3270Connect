@@ -472,6 +472,7 @@ func (e *Emulator) Connect() error {
 				msg := fmt.Sprintf("ERROR createApp failed (attempt %d/%d): %v", retries+1, maxRetries, err)
 				pterm.Error.Println(msg)
 			}
+			e.rotateScriptPort() // Avoid retrying on a potentially poisoned script port.
 			time.Sleep(retryDelay)
 			continue
 		}
@@ -482,6 +483,7 @@ func (e *Emulator) Connect() error {
 
 		// Emulator did not report connected; clean up and retry to avoid poisoning the worker's script port.
 		_ = e.Disconnect()
+		e.rotateScriptPort()
 		time.Sleep(retryDelay)
 	}
 
@@ -597,6 +599,38 @@ func (e *Emulator) createApp() error {
 	}
 
 	return nil
+}
+
+// rotateScriptPort selects the next available script port to reduce collisions and stuck sessions.
+func (e *Emulator) rotateScriptPort() {
+	current := 5000
+	if p, err := strconv.Atoi(strings.TrimSpace(e.ScriptPort)); err == nil && p > 0 {
+		current = p
+	}
+	for i := 0; i < 20; i++ {
+		candidate := current + i + 1
+		if isTCPPortAvailable(candidate) {
+			e.ScriptPort = strconv.Itoa(candidate)
+			if Verbose {
+				log.Printf("Rotated script port to %s", e.ScriptPort)
+			}
+			return
+		}
+	}
+	// Fallback: increment even if availability check failed.
+	e.ScriptPort = strconv.Itoa(current + 1)
+	if Verbose {
+		log.Printf("Fallback rotating script port to %s", e.ScriptPort)
+	}
+}
+
+func isTCPPortAvailable(port int) bool {
+	ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
+	if err != nil {
+		return false
+	}
+	_ = ln.Close()
+	return true
 }
 
 // hostname return hostname formatted
