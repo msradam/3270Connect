@@ -588,8 +588,17 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration) err
 	mutex.Lock()
 	activeWorkflows++
 	mutex.Unlock()
+	defer func() {
+		mutex.Lock()
+		activeWorkflows--
+		mutex.Unlock()
+	}()
 	e.Host = config.Host
 	e.Port = config.Port
+
+	// Always start from a clean session to avoid reusing stale emulator state between pooled runs.
+	_ = e.Disconnect()
+	defer e.Disconnect()
 	tmpFileName := config.OutputFilePath
 	cleanupTempFile := false
 	if tmpFileName == "" {
@@ -606,7 +615,9 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration) err
 			os.Remove(tmpFileName)
 		}
 	}()
-	e.InitializeOutput(tmpFileName, runAPI)
+	if err := e.InitializeOutput(tmpFileName, runAPI); err != nil {
+		return handleError(err, fmt.Sprintf("Output init failed - setup's cursed: %v", err))
+	}
 	workflowFailed := false
 	var steps []Step
 	var err error
@@ -637,9 +648,6 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration) err
 		}
 	}
 
-	mutex.Lock()
-	activeWorkflows--
-	mutex.Unlock()
 	duration := time.Since(startTime).Seconds()
 	recordWorkflowDuration(duration)
 
