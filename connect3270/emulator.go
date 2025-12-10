@@ -475,13 +475,19 @@ func (e *Emulator) Connect() error {
 			if err == nil {
 				break
 			}
-			msg := fmt.Sprintf("ERROR createApp failed (attempt %d/%d): %v", attempt+1, maxRetries, err)
-			pterm.Error.Println(msg)
+			// Don't log shutdown errors as errors - they are expected during graceful shutdown
+			if err.Error() != "shutdown requested" {
+				msg := fmt.Sprintf("ERROR createApp failed (attempt %d/%d): %v", attempt+1, maxRetries, err)
+				pterm.Error.Println(msg)
+			}
 			time.Sleep(retryDelay)
 		}
 		if err != nil {
-			msg := fmt.Sprintf("ERROR failed to create app: %v", err)
-			pterm.Error.Println(msg)
+			// Don't log shutdown errors as errors - they are expected during graceful shutdown
+			if err.Error() != "shutdown requested" {
+				msg := fmt.Sprintf("ERROR failed to create app: %v", err)
+				pterm.Error.Println(msg)
+			}
 			defer e.Disconnect()
 			return fmt.Errorf("failed to create client to connect: %v", err) // Return the error immediately
 		}
