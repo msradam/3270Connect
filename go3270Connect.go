@@ -668,9 +668,8 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration, ove
 				connectFailed = true
 				if showConnectionErrors {
 					addError(err)
-				} else {
-					storeLog(fmt.Sprintf("Connect failed for scriptPort %s: %v", scriptPortLabel, err))
 				}
+				break // Stop executing further steps when connection could not be established
 			} else {
 				workflowFailed = true
 				addError(err)
@@ -684,16 +683,12 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration, ove
 	if workflowFailed {
 		atomic.AddInt64(&totalWorkflowsFailed, 1)
 	} else if connectFailed {
-		msg := fmt.Sprintf("Workflow for scriptPort %s failed to connect; not counted as workflow failure", scriptPortLabel)
 		if showConnectionErrors {
+			msg := fmt.Sprintf("Workflow for scriptPort %s failed to connect; not counted as workflow failure", scriptPortLabel)
 			storeLog(msg)
 			if connect3270.Verbose {
 				pterm.Warning.Println(msg)
 			}
-		} else if connect3270.Verbose {
-			pterm.Info.Println(msg)
-		} else {
-			storeLog(msg)
 		}
 	} else {
 		if connect3270.Verbose {
