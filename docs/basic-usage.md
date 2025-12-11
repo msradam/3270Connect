@@ -37,6 +37,7 @@ To run a single workflow, create a JSON configuration file that describes the wo
   "Host": "10.27.27.62",
   "Port": 3270,
   "Delay": 0.75,
+  "WaitForField": true, // optional (default true) to wait after Connect
   "HTMLFilePath": "output.html",
   "RampUpBatchSize": 10, //optional for concurrency runs
   "RampUpDelay": 1, //optional for concurrency runs
@@ -90,7 +91,13 @@ To run a single workflow, create a JSON configuration file that describes the wo
 }
 ```
 
-In this example, a short global `Delay` keeps the steps paced, the `HumanDelay` step adds a longer pause before pressing Enter, and the workflow connects to a host, captures the screen, fills both fields, presses Enter, captures the screen again, and then disconnects.
+In this example, a short global `Delay` keeps the steps paced, the `HumanDelay` step adds a longer pause before pressing Enter, and the workflow connects to a host, captures the screen, fills both fields, presses Enter, captures the screen again, and then disconnects. By default, `WaitForField` will wait after `Connect` before the next step. If you disable the global setting (`"WaitForField": false`), you can still add an explicit step where you need it:
+
+```json
+    { "Type": "WaitForField", "Delay": 2 }
+```
+
+Place it after `Connect` or after navigation steps (e.g., `PressEnter`) when the host is slow to render the next screen.
 
 ### Concurrent Workflows
 
@@ -130,6 +137,11 @@ To log only failing steps (without the volume of full verbose output), use the `
 ```bash
 3270Connect -config workflow.json -verboseFailures
 ```
+
+### Screen readiness (WaitForField)
+
+- Global: `WaitForField` in the top-level config (default `true`) waits after every `Connect` until the terminal unlocks an input field. Set it to `false` to opt out globally.
+- Per-step: Add a `WaitForField` step wherever you need an extra wait (e.g., after `PressEnter`). Use `Delay` to override the default 1-second timeout.
 
 ### startPort Flag
 
