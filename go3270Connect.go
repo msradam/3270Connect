@@ -1249,7 +1249,10 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 		memVal := getLastMemoryUsage()
 		storeLog(fmt.Sprintf("Scheduled %d workflows, active: %d, CPU: %.2f%%, MEM: %.2f%%", startedThisBatch, active, cpuVal, memVal))
 		if active < workerCount {
-			combinedMsg := formatPowerupRow(time.Now(), overallStart, runtimeDuration, active, workerCount, startedThisBatch, cpuVal, memVal)
+			started := atomic.LoadInt64(&totalWorkflowsStarted)
+			completed := atomic.LoadInt64(&totalWorkflowsCompleted)
+			failed := atomic.LoadInt64(&totalWorkflowsFailed)
+			combinedMsg := formatPowerupRow(time.Now(), overallStart, runtimeDuration, active, workerCount, startedThisBatch, started, completed, failed, cpuVal, memVal)
 			pterm.Info.Println(combinedMsg)
 			storeLog(combinedMsg)
 		}
@@ -1393,15 +1396,15 @@ func generateSummaryText(finalStarted, finalCompleted, finalFailed int64, finalA
 
 func formatLiveStatsRow(ts time.Time, elapsed, runtimeDuration, active, workerCount int, started, completed, failed int64, cpuUsage, memUsage float64) string {
 	remaining := max(runtimeDuration-elapsed, 0)
-	return fmt.Sprintf("%s | Elapsed=%ds | Remain=%ds | Active %d/%d | CPU %.1f%% | MEM %.1f%% | Started=%d | Done=%d | Fail=%d",
-		ts.Format("15:04:05"), elapsed, remaining, active, workerCount, cpuUsage, memUsage, started, completed, failed)
+	return fmt.Sprintf("%s  | Active %d/%d |Started=%d | Done=%d | Fail=%d | Elapsed=%ds | Remain=%ds | CPU %.1f%% | MEM %.1f%%",
+		ts.Format("15:04:05"), active, workerCount, started, completed, failed, elapsed, remaining, cpuUsage, memUsage)
 }
 
-func formatPowerupRow(ts time.Time, overallStart time.Time, runtimeDuration int, active, workerCount, addedThisBatch int, cpuUsage, memUsage float64) string {
+func formatPowerupRow(ts time.Time, overallStart time.Time, runtimeDuration int, active, workerCount, addedThisBatch int, started, completed, failed int64, cpuUsage, memUsage float64) string {
 	elapsed := int(time.Since(overallStart).Seconds())
 	remaining := max(runtimeDuration-elapsed, 0)
-	return fmt.Sprintf("%s | Elapsed=%ds | Remain=%ds | Active %d/%d | CPU %.1f%% | MEM %.1f%% | RAMPUP +%d; %d to target",
-		ts.Format("15:04:05"), elapsed, remaining, active, workerCount, cpuUsage, memUsage, addedThisBatch, workerCount-active)
+	return fmt.Sprintf("%s  | Active %d/%d |Started=%d | Done=%d | Fail=%d | Elapsed=%ds | Remain=%ds | CPU %.1f%% | MEM %.1f%% | RAMPUP +%d; %d to target",
+		ts.Format("15:04:05"), active, workerCount, started, completed, failed, elapsed, remaining, cpuUsage, memUsage, addedThisBatch, workerCount-active)
 }
 
 func printSingleWorkflowSummary() {
