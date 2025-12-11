@@ -51,6 +51,12 @@ Run in verbose mode:
 docker run -it -v $(pwd)/workflow.json:/app/workflow.json -v $(pwd)/output.html:/app/output.html -p 3270:3270 3270io/3270connect-linux:latest -config /app/workflow.json -verbose
 ```
 
+Log only failing steps (concise failure diagnostics without full verbose noise):
+
+```shell
+docker run -it -v $(pwd)/workflow.json:/app/workflow.json -v $(pwd)/output.html:/app/output.html -p 3270:3270 3270io/3270connect-linux:latest -config /app/workflow.json -verboseFailures
+```
+
 Run multiple workflows concurrently:
 
 ```shell
@@ -115,6 +121,12 @@ Run in verbose mode:
 
 ```shell
 docker run -it -v ${PWD}/workflow.json:/app/workflow.json -v ${PWD}/output.html:/app/output.html -p 3270:3270 3270io/3270connect-windows:latest -config /app/workflow.json -verbose
+```
+
+Log only failing steps (concise failure diagnostics without full verbose noise):
+
+```shell
+docker run -it -v ${PWD}/workflow.json:/app/workflow.json -v ${PWD}/output.html:/app/output.html -p 3270:3270 3270io/3270connect-windows:latest -config /app/workflow.json -verboseFailures
 ```
 
 Run multiple workflows concurrently:

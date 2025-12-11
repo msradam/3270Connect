@@ -13,6 +13,7 @@ To run a workflow, use the following command:
 - `-config`: Specifies the path to the configuration file (default is "workflow.json").
 - `-token`: Provides a one-time RSA token that replaces any `{{token}}` placeholder in workflow step text during execution.
 - `-showConnectionErrors`: By default, connection failures for the `Connect` step are informational and do not increment the failed workflow counter. Set this flag to surface connection failures as errors and include them in the failure tally.
+- `-verboseFailures`: Emit concise failure-only logs (step, script port, error) without enabling full verbose mode—useful for high-concurrency runs where you only want failure diagnostics.
 
 ### Injecting a runtime RSA token
 
@@ -119,6 +120,14 @@ To enable verbose mode for detailed output, use the `-verbose` flag.
 
 ```bash
 3270Connect -config workflow.json -verbose
+```
+
+### Failure-only verbose logging
+
+To log only failing steps (without the volume of full verbose output), use the `-verboseFailures` flag. This is helpful when running many concurrent workflows and you just want to capture which steps failed.
+
+```bash
+3270Connect -config workflow.json -verboseFailures
 ```
 
 ### startPort Flag
