@@ -471,8 +471,10 @@ func (e *Emulator) Connect() error {
 		if err := e.createApp(); err != nil {
 			// Don't log shutdown errors as errors - they are expected during graceful shutdown
 			if err.Error() != "shutdown requested" {
-				msg := fmt.Sprintf("ERROR createApp failed (attempt %d/%d): %v", retries+1, maxRetries, err)
-				pterm.Error.Println(msg)
+				if retries+1 == maxRetries {
+					msg := fmt.Sprintf("ERROR createApp failed (attempt %d/%d): %v", retries+1, maxRetries, err)
+					pterm.Error.Println(msg)
+				}
 			}
 			e.rotateScriptPort() // Avoid retrying on a potentially poisoned script port.
 			time.Sleep(retryDelay)
