@@ -2088,6 +2088,22 @@
     });
   }
 
+  function computeAggregatedMetricsFromExtended(metrics) {
+    var agg = {
+      activeWorkflows: 0,
+      totalWorkflowsStarted: 0,
+      totalWorkflowsCompleted: 0,
+      totalWorkflowsFailed: 0
+    };
+    (metrics || []).forEach(function(m) {
+      agg.activeWorkflows += m.activeWorkflows || 0;
+      agg.totalWorkflowsStarted += m.totalWorkflowsStarted || 0;
+      agg.totalWorkflowsCompleted += m.totalWorkflowsCompleted || 0;
+      agg.totalWorkflowsFailed += m.totalWorkflowsFailed || 0;
+    });
+    return agg;
+  }
+
   function computeAggregatedSeries() {
     var aggregatedCPU = [];
     var cpuCount = [];
@@ -2748,7 +2764,8 @@
           return;
         }
         metricsData = payload.extendedMetrics || [];
-        updateHeaderMetrics(payload.aggregatedMetrics);
+        var aggregated = computeAggregatedMetricsFromExtended(metricsData);
+        updateHeaderMetrics(aggregated);
         renderProcessIntelligenceTable(metricsData);
         updatePidFilterOptions(metricsData);
         updateCharts();
