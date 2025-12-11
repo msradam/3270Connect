@@ -2736,7 +2736,7 @@
     if (showIndicator) {
       triggerRefreshIndicator();
     }
-    return fetch('/dashboard/data')
+    return fetch('/dashboard/data', { cache: 'no-store' })
       .then(function(response) {
         if (!response.ok) {
           throw new Error('Failed to refresh dashboard data');

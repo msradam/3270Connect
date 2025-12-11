@@ -1729,6 +1729,7 @@ func runDashboard() {
 		}
 	})
 	http.HandleFunc("/dashboard/data", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
 		_, extendedList := readDashboardMetrics(dashboardDir)
 		payload := struct {
 			AggregatedMetrics Metrics           `json:"aggregated"`
