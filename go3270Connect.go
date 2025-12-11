@@ -1731,13 +1731,25 @@ func runDashboard() {
 	http.HandleFunc("/dashboard/data", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		_, extendedList := readDashboardMetrics(dashboardDir)
+
+		// Prefer live processes for UI stats; fall back to latest snapshot if nothing running.
+		filtered := make([]ExtendedMetrics, 0, len(extendedList))
+		for _, m := range extendedList {
+			if m.IsRunning {
+				filtered = append(filtered, m)
+			}
+		}
+		if len(filtered) == 0 {
+			filtered = extendedList
+		}
+
 		payload := struct {
 			AggregatedMetrics Metrics           `json:"aggregated"`
 			ExtendedMetrics   []ExtendedMetrics `json:"extendedMetrics"`
 			Timestamp         int64             `json:"timestamp"`
 		}{
-			AggregatedMetrics: aggregateExtendedMetrics(extendedList),
-			ExtendedMetrics:   extendedList,
+			AggregatedMetrics: aggregateExtendedMetrics(filtered),
+			ExtendedMetrics:   filtered,
 			Timestamp:         time.Now().Unix(),
 		}
 		w.Header().Set("Content-Type", "application/json")
