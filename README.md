@@ -40,6 +40,8 @@ Here are the key features of 3270Connect:
   Source: `connect3270/emulator.go`.
 - Establishing a TN3270 session runs through `Emulator.Connect`, which retries up to 10 times with a 1-second delay between attempts (`maxRetries`/`retryDelay`). Starting the emulator process itself is also retried up to 10 times before surfacing an error.  
   Source: `connect3270/emulator.go`.
+- Connection failures for the workflow “Connect” step are informational by default and do not increment the failed workflow counter; pass `-showConnectionErrors` if you want connection failures to be treated as errors and surfaced in the failure tally.  
+  Source: `go3270Connect.go`.
 - The `/testConnection` API endpoint that probes host reachability uses a 5-second TCP dial timeout when opening the socket to the TN3270 host.  
   Source: `go3270Connect.go`.
 

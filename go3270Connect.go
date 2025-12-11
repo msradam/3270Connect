@@ -138,6 +138,8 @@ var enableProgressBar bool
 var runAppPort int
 var metricsConfigFilePath string
 var metricsOutputFilePath string
+var workflowTimeout int
+var showConnectionErrors bool
 
 type LogEntry struct {
 	PID        string    `json:"pid"`
@@ -264,6 +266,8 @@ func init() {
 	flag.StringVar(&runApp, "runApp", "", "Select which sample 3270 app to run ('1' or '2')")
 	flag.IntVar(&runAppPort, "runApp-port", 3270, "Port for the sample 3270 app")
 	flag.IntVar(&startPort, "startPort", 5000, "Starting port for workflow connections")
+	flag.IntVar(&workflowTimeout, "workflowTimeout", 120, "Hard timeout per workflow in seconds (0 to disable)")
+	flag.BoolVar(&showConnectionErrors, "showConnectionErrors", false, "Treat connection failures as errors and report them")
 	flag.IntVar(&dashboardPort, "dashboardPort", 9200, "Port for the dashboard server")
 	flag.BoolVar(&enableProgressBar, "enableProgressBar", false, "Enable progress bar and hide INFO log messages")
 
@@ -570,16 +574,25 @@ func loadInputFile(filePath string) ([]Step, error) {
 
 func runWorkflow(scriptPort int, config *Configuration) error {
 	e := connect3270.NewEmulator(config.Host, config.Port, strconv.Itoa(scriptPort))
-	return runWorkflowWithEmulator(e, config)
+	return runWorkflowWithEmulator(e, config, time.Time{})
 }
 
-func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration) error {
+func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration, overallDeadline time.Time) error {
 	// Check if shutdown was requested before starting workflow execution
 	if connect3270.ShutdownRequested() {
 		return nil // Graceful stop: do not count as started or failed
 	}
 	scriptPortLabel := e.ScriptPort
 	startTime := time.Now()
+	var workflowDeadline time.Time
+	if workflowTimeout > 0 {
+		workflowDeadline = startTime.Add(time.Duration(workflowTimeout) * time.Second)
+	}
+	if !overallDeadline.IsZero() {
+		if workflowDeadline.IsZero() || overallDeadline.Before(workflowDeadline) {
+			workflowDeadline = overallDeadline
+		}
+	}
 	atomic.AddInt64(&totalWorkflowsStarted, 1)
 	if connect3270.Verbose {
 		pterm.Info.Printf("Starting workflow for scriptPort %s\n", scriptPortLabel)
@@ -619,6 +632,7 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration) err
 		return handleError(err, fmt.Sprintf("Output init failed - setup's cursed: %v", err))
 	}
 	workflowFailed := false
+	connectFailed := false
 	var steps []Step
 	var err error
 	if config.InputFilePath != "" {
@@ -635,6 +649,14 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration) err
 		if workflowFailed {
 			break
 		}
+		if !workflowDeadline.IsZero() && time.Now().After(workflowDeadline) {
+			workflowFailed = true
+			addError(fmt.Errorf("workflow timed out after %ds", time.Since(startTime)/time.Second))
+			break
+		}
+		if connect3270.ShutdownRequested() {
+			break
+		}
 		if idx > 0 && stepDelay > 0 {
 			time.Sleep(stepDelay)
 		}
@@ -643,8 +665,17 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration) err
 			if err.Error() == "shutdown requested" {
 				break // Graceful stop: do not count as failure
 			}
-			workflowFailed = true
-			addError(err)
+			if step.Type == "Connect" {
+				connectFailed = true
+				if showConnectionErrors {
+					addError(err)
+				} else {
+					storeLog(fmt.Sprintf("Connect failed for scriptPort %s: %v", scriptPortLabel, err))
+				}
+			} else {
+				workflowFailed = true
+				addError(err)
+			}
 		}
 	}
 
@@ -653,6 +684,18 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration) err
 
 	if workflowFailed {
 		atomic.AddInt64(&totalWorkflowsFailed, 1)
+	} else if connectFailed {
+		msg := fmt.Sprintf("Workflow for scriptPort %s failed to connect; not counted as workflow failure", scriptPortLabel)
+		if showConnectionErrors {
+			storeLog(msg)
+			if connect3270.Verbose {
+				pterm.Warning.Println(msg)
+			}
+		} else if connect3270.Verbose {
+			pterm.Info.Println(msg)
+		} else {
+			storeLog(msg)
+		}
 	} else {
 		if connect3270.Verbose {
 			storeLog(fmt.Sprintf("Workflow for scriptPort %s completed successfully", scriptPortLabel))
@@ -968,14 +1011,16 @@ type workflowWorker struct {
 	jobs     <-chan *Configuration
 	wg       *sync.WaitGroup
 	emulator *connect3270.Emulator
+	deadline time.Time
 }
 
-func newWorkflowWorker(id int, jobs <-chan *Configuration, wg *sync.WaitGroup) *workflowWorker {
+func newWorkflowWorker(id int, jobs <-chan *Configuration, wg *sync.WaitGroup, deadline time.Time) *workflowWorker {
 	return &workflowWorker{
 		id:       id,
 		jobs:     jobs,
 		wg:       wg,
 		emulator: connect3270.NewEmulator("", 0, ""),
+		deadline: deadline,
 	}
 }
 
@@ -999,7 +1044,7 @@ func (w *workflowWorker) start() {
 		}
 		w.emulator.Host = cfg.Host
 		w.emulator.Port = cfg.Port
-		if err := runWorkflowWithEmulator(w.emulator, cfg); err != nil {
+		if err := runWorkflowWithEmulator(w.emulator, cfg, w.deadline); err != nil {
 			storeLog(fmt.Sprintf("Worker %d workflow error: %v", w.id, err))
 			if connect3270.Verbose {
 				pterm.Error.Printf("Worker %d workflow error: %v\n", w.id, err)
@@ -1020,11 +1065,12 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 	if workerCount <= 0 {
 		workerCount = 1
 	}
+	deadline := overallStart.Add(time.Duration(runtimeDuration) * time.Second)
 	jobs := make(chan *Configuration)
 	var workerWG sync.WaitGroup
 	for i := 0; i < workerCount; i++ {
 		workerWG.Add(1)
-		worker := newWorkflowWorker(i, jobs, &workerWG)
+		worker := newWorkflowWorker(i, jobs, &workerWG, deadline)
 		go worker.start()
 	}
 
@@ -1107,7 +1153,7 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 		tickerInterval = 5 * time.Second
 	}
 
-	deadline := overallStart.Add(time.Duration(runtimeDuration) * time.Second)
+	deadline = overallStart.Add(time.Duration(runtimeDuration) * time.Second)
 
 	stopTicker = make(chan struct{})
 	go func() {
@@ -1412,13 +1458,25 @@ func clear() {
 func getNextAvailablePort() int {
 	mutex.Lock()
 	defer mutex.Unlock()
+	const maxPort = 65000
+	checked := 0
 	for {
 		lastUsedPort++
+		if lastUsedPort > maxPort {
+			lastUsedPort = startPort
+		}
 		if isPortAvailable(lastUsedPort) {
 			return lastUsedPort
 		}
+		checked++
 		if connect3270.Verbose {
 			pterm.Warning.Printf("Port %d is taken - port party’s full!\n", lastUsedPort)
+		}
+		if checked >= (maxPort - startPort + 1) {
+			mutex.Unlock()
+			time.Sleep(100 * time.Millisecond)
+			mutex.Lock()
+			checked = 0
 		}
 	}
 }

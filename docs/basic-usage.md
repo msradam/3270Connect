@@ -12,6 +12,7 @@ To run a workflow, use the following command:
 
 - `-config`: Specifies the path to the configuration file (default is "workflow.json").
 - `-token`: Provides a one-time RSA token that replaces any `{{token}}` placeholder in workflow step text during execution.
+- `-showConnectionErrors`: By default, connection failures for the `Connect` step are informational and do not increment the failed workflow counter. Set this flag to surface connection failures as errors and include them in the failure tally.
 
 ### Injecting a runtime RSA token
 

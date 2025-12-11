@@ -65,10 +65,12 @@ const (
 )
 
 const (
-	maxRetries        = 10          // Maximum number of retries
-	retryDelay        = time.Second // Delay between retries (e.g., 1 second)
-	scriptDialTimeout = 5 * time.Second
-	scriptIOTimeout   = 30 * time.Second
+	maxRetries            = 10          // Maximum number of retries
+	retryDelay            = time.Second // Delay between retries (e.g., 1 second)
+	scriptDialTimeout     = 5 * time.Second
+	scriptIOTimeout       = 30 * time.Second
+	startupPollInterval   = 200 * time.Millisecond
+	startupConnectTimeout = 20 * time.Second
 )
 
 var errScriptTransport = errors.New("script transport error")
@@ -573,9 +575,10 @@ func (e *Emulator) createApp() error {
 		}
 	}()
 
-	const maxAttempts = 15
+	deadline := time.Now().Add(startupConnectTimeout)
 	connected := false
-	for attempt := 0; attempt < maxAttempts; attempt++ {
+	attempt := 0
+	for time.Now().Before(deadline) {
 		if ShutdownRequested() {
 			return fmt.Errorf("shutdown requested")
 		}
@@ -584,9 +587,10 @@ func (e *Emulator) createApp() error {
 			break
 		}
 		if Verbose {
-			log.Printf("Waiting for emulator session (%s) to report connected (%d/%d)", e.hostname(), attempt+1, maxAttempts)
+			log.Printf("Waiting for emulator session (%s) to report connected (attempt %d, %.1fs left)", e.hostname(), attempt+1, time.Until(deadline).Seconds())
 		}
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(startupPollInterval)
+		attempt++
 	}
 
 	if !connected {
@@ -595,7 +599,7 @@ func (e *Emulator) createApp() error {
 			_ = cmd.Process.Kill()
 		}
 		e.closeScriptConn()
-		return fmt.Errorf("timed out waiting for emulator to connect to %s after %d attempts", e.hostname(), maxAttempts)
+		return fmt.Errorf("timed out waiting for emulator to connect to %s after %.1fs", e.hostname(), startupConnectTimeout.Seconds())
 	}
 
 	return nil
