@@ -2089,6 +2089,9 @@ func monitorSystemUsage() {
 			lastMemUsage = memStats.UsedPercent
 			metricsMutex.Unlock()
 		}
+
+		// Keep dashboard system interface metrics fresh even if the dashboard update loop isn't running.
+		updateMetricsFile()
 	}
 }
 
