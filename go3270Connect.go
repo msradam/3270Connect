@@ -805,7 +805,17 @@ func executeStep(e *connect3270.Emulator, step Step, tmpFileName string, token s
 	case "PressTab":
 		return e.Press(connect3270.Tab)
 	case "Disconnect":
-		return e.Disconnect()
+		if err := e.Disconnect(); err != nil {
+			// Disconnect failures often mean the emulator is already gone; don't fail the workflow for that.
+			msg := fmt.Sprintf("Disconnect ignored: %v", err)
+			if connect3270.Verbose {
+				pterm.Warning.Println(msg)
+			} else {
+				storeLog(msg)
+			}
+			return nil
+		}
+		return nil
 	case "PressPF1":
 		return e.Press(connect3270.F1)
 	case "PressPF2":
@@ -1793,8 +1803,15 @@ func isProcessRunning(pid int) bool {
 	return true
 }
 
-func shouldCleanupMetric(m ExtendedMetrics) bool {
-	return !m.IsRunning && m.Status == "Killed"
+func shouldCleanupMetric(m ExtendedMetrics, modTime time.Time) bool {
+	if m.IsRunning || m.Status != "Killed" {
+		return false
+	}
+	// Only clean up long-dead "killed" entries to avoid nuking live stats.
+	if modTime.IsZero() {
+		return false
+	}
+	return time.Since(modTime) > 10*time.Minute
 }
 
 func cleanupProcessArtifacts(pid int, metricsFile string) {
@@ -1827,7 +1844,12 @@ func readDashboardMetrics(baseDir string) ([]Metrics, []ExtendedMetrics) {
 	var metricsList []Metrics
 	var extendedList []ExtendedMetrics
 	for _, f := range files {
-		if _, err := os.Stat(f); os.IsNotExist(err) {
+		fi, err := os.Stat(f)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			pterm.Warning.Printf("Stat on metrics file %s failed: %v\n", f, err)
 			continue
 		}
 
@@ -1845,7 +1867,7 @@ func readDashboardMetrics(baseDir string) ([]Metrics, []ExtendedMetrics) {
 			continue
 		}
 		extendedMetric := m.extend()
-		if shouldCleanupMetric(extendedMetric) {
+		if shouldCleanupMetric(extendedMetric, fi.ModTime()) {
 			cleanupProcessArtifacts(extendedMetric.PID, f)
 			continue
 		}
@@ -1881,6 +1903,19 @@ func updateMetricsFile() {
 	durationsCopy := make([]float64, len(workflowDurations))
 	copy(durationsCopy, workflowDurations)
 	timingsMutex.Unlock()
+
+	// Fallback sampling in case monitorSystemUsage hasn't populated history yet.
+	if len(cpuCopy) == 0 {
+		if cpuPercents, err := cpu.Percent(0, false); err == nil && len(cpuPercents) > 0 {
+			cpuCopy = append(cpuCopy, cpuPercents[0])
+		}
+	}
+	if len(memCopy) == 0 {
+		if memStats, err := mem.VirtualMemory(); err == nil && memStats != nil {
+			memCopy = append(memCopy, memStats.UsedPercent)
+		}
+	}
+
 	pid := os.Getpid()
 	args := os.Args[1:]
 	parameters := strings.Join(args, " ")
@@ -1910,9 +1945,14 @@ func updateMetricsFile() {
 		MemoryUsage:             memCopy,
 		Params:                  parameters,
 		RuntimeDuration:         runtimeDuration,
-		StartTimestamp:          programStart.Unix(),
-		ConfigFilePath:          configPath,
-		OutputFilePath:          outputPath,
+		StartTimestamp: func() int64 {
+			if programStart.IsZero() {
+				return time.Now().Unix()
+			}
+			return programStart.Unix()
+		}(),
+		ConfigFilePath: configPath,
+		OutputFilePath: outputPath,
 	}
 
 	// Process extended metrics by using the extend() method on metrics.
@@ -1948,7 +1988,12 @@ func aggregateMetrics() Metrics {
 	var agg Metrics
 	for _, f := range files {
 		// Check if file exists before attempting to read it
-		if _, err := os.Stat(f); os.IsNotExist(err) {
+		fi, err := os.Stat(f)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			pterm.Warning.Printf("Stat on metrics file %s failed: %v\n", f, err)
 			continue
 		}
 
@@ -1967,7 +2012,7 @@ func aggregateMetrics() Metrics {
 			continue
 		}
 		extendedMetric := m.extend()
-		if shouldCleanupMetric(extendedMetric) {
+		if shouldCleanupMetric(extendedMetric, fi.ModTime()) {
 			cleanupProcessArtifacts(extendedMetric.PID, f)
 			continue
 		}
