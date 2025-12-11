@@ -35,7 +35,7 @@ import (
 	"github.com/shirou/gopsutil/mem"
 )
 
-const version = "1.7.2"
+const version = "1.7.3"
 
 const (
 	cpuHistoryLimit              = 120
@@ -970,12 +970,12 @@ type workflowWorker struct {
 	emulator *connect3270.Emulator
 }
 
-func newWorkflowWorker(id, scriptPort int, jobs <-chan *Configuration, wg *sync.WaitGroup) *workflowWorker {
+func newWorkflowWorker(id int, jobs <-chan *Configuration, wg *sync.WaitGroup) *workflowWorker {
 	return &workflowWorker{
 		id:       id,
 		jobs:     jobs,
 		wg:       wg,
-		emulator: connect3270.NewEmulator("", 0, strconv.Itoa(scriptPort)),
+		emulator: connect3270.NewEmulator("", 0, ""),
 	}
 }
 
@@ -991,6 +991,11 @@ func (w *workflowWorker) start() {
 				storeLog(fmt.Sprintf("Worker %d skipping workflow due to shutdown request", w.id))
 			}
 			continue
+		}
+		scriptPort := getNextAvailablePort()
+		w.emulator.ScriptPort = strconv.Itoa(scriptPort)
+		if connect3270.Verbose {
+			storeLog(fmt.Sprintf("Worker %d using script port %d", w.id, scriptPort))
 		}
 		w.emulator.Host = cfg.Host
 		w.emulator.Port = cfg.Port
@@ -1019,8 +1024,7 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 	var workerWG sync.WaitGroup
 	for i := 0; i < workerCount; i++ {
 		workerWG.Add(1)
-		port := getNextAvailablePort()
-		worker := newWorkflowWorker(i, port, jobs, &workerWG)
+		worker := newWorkflowWorker(i, jobs, &workerWG)
 		go worker.start()
 	}
 

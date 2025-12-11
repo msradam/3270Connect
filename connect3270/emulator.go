@@ -460,7 +460,7 @@ func (e *Emulator) Connect() error {
 		}
 
 		if Verbose {
-			log.Println("func Connect: using -scriptport: " + e.ScriptPort)
+			log.Printf("Connect attempt %d/%d using -scriptport: %s", retries+1, maxRetries, e.ScriptPort)
 		}
 
 		// Reset any lingering script connection before the next attempt.
