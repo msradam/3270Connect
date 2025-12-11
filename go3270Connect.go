@@ -54,6 +54,7 @@ type Configuration struct {
 	Host            string
 	Port            int
 	OutputFilePath  string `json:"OutputFilePath"`
+	WaitForField    bool   `json:"WaitForField,omitempty"`
 	Steps           []Step
 	Delay           float64 `json:"Delay,omitempty"`
 	Token           string  `json:"Token,omitempty"`
@@ -378,7 +379,9 @@ func loadConfiguration(filePath string) *Configuration {
 		os.Exit(1)
 	}
 	defer configFile.Close()
-	var config Configuration
+	config := Configuration{
+		WaitForField: true, // default to waiting after Connect unless disabled in config
+	}
 	decoder := json.NewDecoder(configFile)
 	err = decoder.Decode(&config)
 	if err != nil {
@@ -662,6 +665,12 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration, ove
 			time.Sleep(stepDelay)
 		}
 		err := executeStep(e, step, tmpFileName, config.Token)
+		if err == nil && step.Type == "Connect" && config.WaitForField {
+			waitErr := e.WaitForField(time.Second)
+			if waitErr != nil {
+				err = waitErr
+			}
+		}
 		if err != nil {
 			if err.Error() == "shutdown requested" {
 				break // Graceful stop: do not count as failure
@@ -722,7 +731,7 @@ func runAPIWorkflow() {
 	r := gin.Default()
 	r.SetTrustedProxies(nil)
 	r.POST("/api/execute", func(c *gin.Context) {
-		var workflowConfig Configuration
+		workflowConfig := Configuration{WaitForField: true}
 		if err := c.ShouldBindJSON(&workflowConfig); err != nil {
 			sendErrorResponse(c, http.StatusBadRequest, "Invalid request payload - JSON’s drunk", err)
 			return
@@ -806,6 +815,12 @@ func executeStep(e *connect3270.Emulator, step Step, tmpFileName string, token s
 		return e.Press(connect3270.Enter)
 	case "PressTab":
 		return e.Press(connect3270.Tab)
+	case "WaitForField":
+		timeout := time.Second
+		if step.Delay > 0 {
+			timeout = time.Duration(step.Delay * float64(time.Second))
+		}
+		return e.WaitForField(timeout)
 	case "Disconnect":
 		if err := e.Disconnect(); err != nil {
 			// Disconnect failures often mean the emulator is already gone; don't fail the workflow for that.
@@ -1554,6 +1569,7 @@ func validateConfiguration(config *Configuration) error {
 			step.Type == "AsciiScreenGrab" ||
 			step.Type == "PressEnter" ||
 			step.Type == "PressTab" ||
+			step.Type == "WaitForField" ||
 			step.Type == "Disconnect" ||
 			step.Type == "HumanDelay" ||
 			(strings.HasPrefix(step.Type, "PressPF")) {

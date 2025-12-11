@@ -36,6 +36,11 @@ You can control pacing with a top-level `Delay` value (seconds, just like `RampU
 - **Parameters**: `outputFilePath` (string) - Path to the output file.
 - **Usage**: To capture the current state of the terminal screen as ASCII text.
 
+### WaitForField
+- **Description**: Waits for the terminal to unlock an input field (keyboard ready) before proceeding.
+- **Parameters**: Optional `Delay` (float, seconds) to override the default 1 second timeout used per retry.
+- **Usage**: Insert after `Connect` or after navigation steps (e.g., `PressEnter`) when the host is slow to render screens. This is also applied automatically after `Connect` when the top-level `WaitForField` setting is `true` (default).
+
 ### HumanDelay
 - **Description**: Inserts a custom pause to mimic human timing between automated interactions.
 - **Parameters**: `Delay` (float) - Number of seconds to wait before the workflow proceeds.

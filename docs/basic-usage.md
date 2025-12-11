@@ -13,6 +13,7 @@ To run a workflow, use the following command:
 - `-config`: Specifies the path to the configuration file (default is "workflow.json").
 - `-token`: Provides a one-time RSA token that replaces any `{{token}}` placeholder in workflow step text during execution.
 - `-showConnectionErrors`: By default, connection failures for the `Connect` step are informational and do not increment the failed workflow counter. Set this flag to surface connection failures as errors and include them in the failure tally.
+- `WaitForField` (config, default `true`): When true, every successful `Connect` waits for the terminal to unlock an input field (1s timeout, 10 retries) before moving to the next step. Set it to `false` if you want to control waiting yourself with explicit `WaitForField` steps.
 - `-verboseFailures`: Emit concise failure-only logs (step, script port, error) without enabling full verbose mode—useful for high-concurrency runs where you only want failure diagnostics.
 
 ### Injecting a runtime RSA token
