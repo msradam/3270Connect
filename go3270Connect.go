@@ -1396,14 +1396,14 @@ func generateSummaryText(finalStarted, finalCompleted, finalFailed int64, finalA
 
 func formatLiveStatsRow(ts time.Time, elapsed, runtimeDuration, active, workerCount int, started, completed, failed int64, cpuUsage, memUsage float64) string {
 	remaining := max(runtimeDuration-elapsed, 0)
-	return fmt.Sprintf("%s  | Active %d/%d |Started=%d | Done=%d | Fail=%d | Elapsed=%ds | Remain=%ds | CPU %.1f%% | MEM %.1f%%",
+	return fmt.Sprintf("%s  | A: %d/%d | S: %d | D: %d | F: %d | E: %ds | R: %ds | C: %.1f%% | M: %.1f%%",
 		ts.Format("15:04:05"), active, workerCount, started, completed, failed, elapsed, remaining, cpuUsage, memUsage)
 }
 
 func formatPowerupRow(ts time.Time, overallStart time.Time, runtimeDuration int, active, workerCount, addedThisBatch int, started, completed, failed int64, cpuUsage, memUsage float64) string {
 	elapsed := int(time.Since(overallStart).Seconds())
 	remaining := max(runtimeDuration-elapsed, 0)
-	return fmt.Sprintf("%s  | Active %d/%d |Started=%d | Done=%d | Fail=%d | Elapsed=%ds | Remain=%ds | CPU %.1f%% | MEM %.1f%% | RAMPUP +%d; %d to target",
+	return fmt.Sprintf("%s  | A: %d/%d | S: %d | D: %d | F: %d | E: %ds | R: %ds | C: %.1f%% | M: %.1f%% | RAMP +%d; %d delta",
 		ts.Format("15:04:05"), active, workerCount, started, completed, failed, elapsed, remaining, cpuUsage, memUsage, addedThisBatch, workerCount-active)
 }
 
