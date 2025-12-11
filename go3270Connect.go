@@ -1344,14 +1344,14 @@ func generateSummaryText(finalStarted, finalCompleted, finalFailed int64, finalA
 
 func formatLiveStatsRow(ts time.Time, elapsed, runtimeDuration, active, workerCount int, started, completed, failed int64, cpuUsage, memUsage float64) string {
 	remaining := max(runtimeDuration-elapsed, 0)
-	return fmt.Sprintf("Time=%s | Elapsed=%ds | Remain=%ds | Active %d/%d | CPU %.1f%% | MEM %.1f%% | STATUS Started=%d | Done=%d | Fail=%d",
+	return fmt.Sprintf("%s | Elapsed=%ds | Remain=%ds | Active %d/%d | CPU %.1f%% | MEM %.1f%% | Started=%d | Done=%d | Fail=%d",
 		ts.Format("15:04:05"), elapsed, remaining, active, workerCount, cpuUsage, memUsage, started, completed, failed)
 }
 
 func formatPowerupRow(ts time.Time, overallStart time.Time, runtimeDuration int, active, workerCount, addedThisBatch int, cpuUsage, memUsage float64) string {
 	elapsed := int(time.Since(overallStart).Seconds())
 	remaining := max(runtimeDuration-elapsed, 0)
-	return fmt.Sprintf("Time=%s | Elapsed=%ds | Remain=%ds | Active %d/%d | CPU %.1f%% | MEM %.1f%% | POWERUP +%d; %d more to hit target",
+	return fmt.Sprintf("%s | Elapsed=%ds | Remain=%ds | Active %d/%d | CPU %.1f%% | MEM %.1f%% | RAMPUP +%d; %d to target",
 		ts.Format("15:04:05"), elapsed, remaining, active, workerCount, cpuUsage, memUsage, addedThisBatch, workerCount-active)
 }
 
