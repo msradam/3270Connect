@@ -266,7 +266,7 @@ func init() {
 	flag.StringVar(&runApp, "runApp", "", "Select which sample 3270 app to run ('1' or '2')")
 	flag.IntVar(&runAppPort, "runApp-port", 3270, "Port for the sample 3270 app")
 	flag.IntVar(&startPort, "startPort", 5000, "Starting port for workflow connections")
-	flag.IntVar(&workflowTimeout, "workflowTimeout", 120, "Hard timeout per workflow in seconds (0 to disable)")
+	flag.IntVar(&workflowTimeout, "workflowTimeout", 0, "Hard timeout per workflow in seconds (0 to disable)")
 	flag.BoolVar(&showConnectionErrors, "showConnectionErrors", false, "Treat connection failures as errors and report them")
 	flag.IntVar(&dashboardPort, "dashboardPort", 9200, "Port for the dashboard server")
 	flag.BoolVar(&enableProgressBar, "enableProgressBar", false, "Enable progress bar and hide INFO log messages")
@@ -582,16 +582,15 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration, ove
 	if connect3270.ShutdownRequested() {
 		return nil // Graceful stop: do not count as started or failed
 	}
+	// If the run-wide deadline has already passed, skip starting a new workflow.
+	if !overallDeadline.IsZero() && time.Now().After(overallDeadline) {
+		return nil
+	}
 	scriptPortLabel := e.ScriptPort
 	startTime := time.Now()
 	var workflowDeadline time.Time
 	if workflowTimeout > 0 {
 		workflowDeadline = startTime.Add(time.Duration(workflowTimeout) * time.Second)
-	}
-	if !overallDeadline.IsZero() {
-		if workflowDeadline.IsZero() || overallDeadline.Before(workflowDeadline) {
-			workflowDeadline = overallDeadline
-		}
 	}
 	atomic.AddInt64(&totalWorkflowsStarted, 1)
 	if connect3270.Verbose {
