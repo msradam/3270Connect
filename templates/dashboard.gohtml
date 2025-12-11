@@ -1986,7 +1986,8 @@
 
   function startAutoRefresh() {
     if (autoRefreshEnabled && !refreshIntervalId && !autoRefreshPausedByModal) {
-      refreshIntervalId = setInterval(function() { refreshDashboardData(true); }, parseInt(refreshPeriod) * 1000);
+      var intervalMs = Math.max(1, parseInt(refreshPeriod) || 5) * 1000;
+      refreshIntervalId = setInterval(function() { refreshDashboardData(true); }, intervalMs);
       console.log("Auto refresh started");
     }
   }
@@ -2023,23 +2024,9 @@
     if (!autoRefreshEnabled) {
       stopAutoRefresh();
     } else if (!autoRefreshPausedByModal) {
-      startAutoRefresh();
+      restartAutoRefresh();
       refreshDashboardData(true);
     }
-    var url = new URL(window.location.href);
-
-    if (checkbox.checked) {
-      url.searchParams.set('autoRefresh', 'true');
-    } else {
-      url.searchParams.set('autoRefresh', 'false');
-    }
-
-    var refreshPeriodSelect = document.getElementById('refreshPeriodSelect');
-    if (refreshPeriodSelect && refreshPeriodSelect.value) {
-      url.searchParams.set('refreshPeriod', refreshPeriodSelect.value);
-    }
-
-    window.location.href = url.toString();
     if (refreshStatusElement) {
       refreshStatusElement.textContent = autoRefreshEnabled ? 'Waiting for the next update' : 'Auto-refresh disabled';
     }
@@ -2048,20 +2035,8 @@
   function handleRefreshPeriodChange() {
     var select = document.getElementById('refreshPeriodSelect');
     if (!select) { return; }
-    var checkbox = document.getElementById('autoRefreshToggle');
-    var url = new URL(window.location.href);
-
-    if (select.value) {
-      url.searchParams.set('refreshPeriod', select.value);
-    }
-
-    if (checkbox && checkbox.checked) {
-      url.searchParams.set('autoRefresh', 'true');
-    } else {
-      url.searchParams.set('autoRefresh', 'false');
-    }
-
-    window.location.href = url.toString();
+    refreshPeriod = select.value || refreshPeriod;
+    restartAutoRefresh();
   }
 
   function triggerRefreshIndicator() {
@@ -2821,6 +2796,8 @@
     initializeCharts();
     renderProcessIntelligenceTable(metricsData);
     updatePidFilterOptions(metricsData);
+    // Always pull a fresh snapshot once on load so stats update even when auto-refresh is off.
+    refreshDashboardData(false);
     updateRefreshTimestamp(Date.now() / 1000);
 
     if (pidSelectElement) {
@@ -2889,6 +2866,11 @@
       startAutoRefresh();
     }
   });
+
+  function restartAutoRefresh() {
+    stopAutoRefresh();
+    startAutoRefresh();
+  }
 
   function loadLogs() {
     var pid = pidSelectElement ? pidSelectElement.value : (document.getElementById("pidFilter") ? document.getElementById("pidFilter").value : "");
