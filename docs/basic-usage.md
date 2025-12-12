@@ -14,6 +14,7 @@ To run a workflow, use the following command:
 - `-token`: Provides a one-time RSA token that replaces any `{{token}}` placeholder in workflow step text during execution.
 - `-showConnectionErrors`: By default, connection failures for the `Connect` step are informational and do not increment the failed workflow counter. Set this flag to surface connection failures as errors and include them in the failure tally.
 - `WaitForField` (config, default `true`): When true, every successful `Connect` waits for the terminal to unlock an input field (1s timeout, 10 retries) before moving to the next step. Set it to `false` if you want to control waiting yourself with explicit `WaitForField` steps.
+- `-workflowTimeout`: Hard timeout (seconds) per workflow. A zero value disables the per-workflow timeout.
 - `-verboseFailures`: Emit concise failure-only logs (step, script port, error) without enabling full verbose mode—useful for high-concurrency runs where you only want failure diagnostics.
 
 ### Injecting a runtime RSA token
@@ -38,6 +39,7 @@ To run a single workflow, create a JSON configuration file that describes the wo
   "Port": 3270,
   "Delay": 0.75,
   "WaitForField": true, // optional (default true) to wait after Connect
+  "WorkflowTimeout": 120, // optional per-workflow timeout in seconds (0 to disable)
   "HTMLFilePath": "output.html",
   "RampUpBatchSize": 10, //optional for concurrency runs
   "RampUpDelay": 1, //optional for concurrency runs
@@ -142,6 +144,10 @@ To log only failing steps (without the volume of full verbose output), use the `
 
 - Global: `WaitForField` in the top-level config (default `true`) waits after every `Connect` until the terminal unlocks an input field. Set it to `false` to opt out globally.
 - Per-step: Add a `WaitForField` step wherever you need an extra wait (e.g., after `PressEnter`). Use `Delay` to override the default 1-second timeout.
+
+### Workflow timeout
+
+- `-workflowTimeout`: Hard timeout (seconds) applied to each workflow run. Default 120; set to `0` to disable. When the timeout is hit, the workflow stops without counting as a connect failure.
 
 ### startPort Flag
 
