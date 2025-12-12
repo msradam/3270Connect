@@ -319,10 +319,10 @@ type barRenderer struct {
 	lines int
 }
 
-func (r *barRenderer) Render(bars ...*ProgressbarPrinter) {
+func (r *barRenderer) render(bars []*ProgressbarPrinter, extraRows []string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if len(bars) == 0 {
+	if len(bars) == 0 && len(extraRows) == 0 {
 		return
 	}
 
@@ -330,13 +330,26 @@ func (r *barRenderer) Render(bars ...*ProgressbarPrinter) {
 		fmt.Printf("\033[%dA", r.lines)
 	}
 
+	lineCount := len(extraRows)
 	for _, bar := range bars {
 		if bar == nil {
 			continue
 		}
 		fmt.Println(bar.view())
+		lineCount++
 	}
-	r.lines = len(bars)
+	for _, row := range extraRows {
+		fmt.Println(row)
+	}
+	r.lines = lineCount
+}
+
+func (r *barRenderer) Render(bars ...*ProgressbarPrinter) {
+	r.render(bars, nil)
+}
+
+func (r *barRenderer) RenderWithRows(bars []*ProgressbarPrinter, rows []string) {
+	r.render(bars, rows)
 }
 
 func (r *barRenderer) Reset() {
@@ -593,7 +606,8 @@ func (p *charmPterm) RenderBanner(title, subtitle string) {
 		}
 	}
 
-	tagline := "Hammering 3270 screens since 2023"
+	fmt.Println()
+	tagline := "🔨 Hammering 3270 screens since 2023"
 	fmt.Println(highlight.Render(strings.ToUpper(tagline)))
 }
 
@@ -622,6 +636,23 @@ func (p *charmPterm) RenderProgressBars(bars ...*ProgressbarPrinter) {
 		renderer = p.DefaultMultiPrinter.renderer
 	}
 	renderer.Render(filtered...)
+}
+
+func (p *charmPterm) RenderProgressBarsWithRows(bars []*ProgressbarPrinter, rows []string) {
+	filtered := make([]*ProgressbarPrinter, 0, len(bars))
+	for _, bar := range bars {
+		if bar != nil {
+			filtered = append(filtered, bar)
+		}
+	}
+	if len(filtered) == 0 && len(rows) == 0 {
+		return
+	}
+	renderer := defaultBarRenderer
+	if p.DefaultMultiPrinter.renderer != nil {
+		renderer = p.DefaultMultiPrinter.renderer
+	}
+	renderer.RenderWithRows(filtered, rows)
 }
 
 func (p *charmPterm) Println(args ...interface{}) {

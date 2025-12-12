@@ -1193,15 +1193,15 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 				started := atomic.LoadInt64(&totalWorkflowsStarted)
 				completed := atomic.LoadInt64(&totalWorkflowsCompleted)
 				failed := atomic.LoadInt64(&totalWorkflowsFailed)
-				metricsSuffix := pterm.Sprintf(" | S:%d C:%d F:%d", started, completed, failed)
+				totalRows := formatWorkflowTotalsRows(started, completed, failed)
 
 				if enableProgressBar {
 					if durationBar != nil {
 						durationBar.Current = min(elapsed, runtimeDuration)
 						if elapsed < runtimeDuration {
-							durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Run Duration (%ds left)", runtimeDuration-elapsed)) + metricsSuffix)
+							durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Run Duration (%ds left)", runtimeDuration-elapsed)))
 						} else {
-							durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, "Run Duration (Completed)") + metricsSuffix)
+							durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, "Run Duration (Completed)"))
 						}
 					}
 					if cpuBar != nil {
@@ -1214,7 +1214,7 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 						activeBar.Current = active
 						activeBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Active vUsers (%d/%d)", active, workerCount)))
 					}
-					pterm.RenderProgressBars(activeBar, durationBar, cpuBar, memBar)
+					pterm.RenderProgressBarsWithRows([]*ProgressbarPrinter{activeBar, durationBar, cpuBar, memBar}, totalRows)
 				} else {
 					row := formatLiveStatsRow(time.Now(), elapsed, runtimeDuration, active, workerCount, started, completed, failed, cpuVal, memVal)
 					if failed > lastFailCount {
@@ -1309,14 +1309,14 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 		started := atomic.LoadInt64(&totalWorkflowsStarted)
 		completed := atomic.LoadInt64(&totalWorkflowsCompleted)
 		failed := atomic.LoadInt64(&totalWorkflowsFailed)
-		metricsSuffix := pterm.Sprintf(" | S:%d C:%d F:%d", started, completed, failed)
+		totalRows := formatWorkflowTotalsRows(started, completed, failed)
 		if durationBar != nil {
 			durationBar.WithTotal(elapsed)
 			durationBar.Current = elapsed
 			const titleWidth = 30
-			durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Run Duration (%ds elapsed)", elapsed)) + metricsSuffix)
+			durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Run Duration (%ds elapsed)", elapsed)))
 		}
-		pterm.RenderProgressBars(activeBar, durationBar, cpuBar, memBar)
+		pterm.RenderProgressBarsWithRows([]*ProgressbarPrinter{activeBar, durationBar, cpuBar, memBar}, totalRows)
 		pterm.Println()
 		multi.Stop()
 	}
@@ -1424,6 +1424,14 @@ func generateSummaryText(finalStarted, finalCompleted, finalFailed int64, finalA
 	sb.WriteString(fmt.Sprintf("Average Workflow Time: %.2fs\n", avgWorkflowTime))
 	sb.WriteString(fmt.Sprintf("Run Duration: %.0fs\n", elapsed))
 	return sb.String()
+}
+
+func formatWorkflowTotalsRows(started, completed, failed int64) []string {
+	return []string{
+		pterm.FgCyan.Sprintf("Started   : %d", started),
+		pterm.FgLightGreen.Sprintf("Completed : %d", completed),
+		pterm.FgRed.Sprintf("Failed    : %d", failed),
+	}
 }
 
 func formatLiveStatsRow(ts time.Time, elapsed, runtimeDuration, active, workerCount int, started, completed, failed int64, cpuUsage, memUsage float64) string {
