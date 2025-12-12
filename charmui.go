@@ -590,9 +590,23 @@ func (p *charmPterm) RenderBanner(title, subtitle string) {
 			fmt.Println(shadow.Render(l))
 		}
 	}
-	joined := strings.TrimSpace(strings.ToUpper(strings.TrimSpace(title + " " + subtitle)))
+
+	joined := strings.TrimSpace(strings.ToUpper(strings.TrimSpace(strings.Join(filterEmpty([]string{title, subtitle}), " "))))
+	if joined == "" {
+		joined = "3270 CONNECT"
+	}
 	label := fmt.Sprintf(" %s ", joined)
 	fmt.Println(highlight.Render(label))
+}
+
+func filterEmpty(items []string) []string {
+	out := make([]string, 0, len(items))
+	for _, s := range items {
+		if strings.TrimSpace(s) != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func (p *charmPterm) RenderProgressBars(bars ...*ProgressbarPrinter) {

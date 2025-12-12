@@ -1165,6 +1165,7 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 			WithShowCount(false).
 			WithShowElapsedTime(true).
 			Start()
+		pterm.Println()
 	} else {
 		pterm.Info.Println("Progress bar disabled. Live stats update every 5s (use -enableProgressBar for gauges).")
 		tickerInterval = 5 * time.Second
@@ -1207,7 +1208,7 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 						activeBar.Current = active
 						activeBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Active vUsers (%d/%d)", active, workerCount)))
 					}
-					pterm.RenderProgressBars(durationBar, activeBar, cpuBar, memBar)
+					pterm.RenderProgressBars(activeBar, durationBar, cpuBar, memBar)
 				} else {
 					row := formatLiveStatsRow(time.Now(), elapsed, runtimeDuration, active, workerCount, started, completed, failed, cpuVal, memVal)
 					if failed > lastFailCount {
@@ -1296,9 +1297,7 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 		multi.Stop()
 	}
 
-	if !enableProgressBar {
-		pterm.Success.Println("Run duration complete. Waiting for current workflows to finish...")
-	}
+	pterm.Success.Println("Run duration complete. Waiting for current workflows to finish...")
 	connect3270.RequestShutdown()
 	close(jobs)
 
@@ -1327,7 +1326,8 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 			const titleWidth = 30
 			durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Run Duration (%ds elapsed)", elapsed)))
 		}
-		pterm.RenderProgressBars(durationBar, activeBar, cpuBar, memBar)
+		pterm.RenderProgressBars(activeBar, durationBar, cpuBar, memBar)
+		pterm.Println()
 	}
 
 	avgCPU := getAverageCPUUsage()
@@ -1348,24 +1348,24 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 		WithLeftAlignment().
 		WithData(TableData{
 			{"Metric", "Value", "Status"},
-			{"Total Workflows Started", pterm.FgCyan.Sprintf("%d", finalStarted), pterm.FgBlue.Sprintf("[STARTED]")},
-			{"Total Workflows Completed", pterm.FgLightGreen.Sprintf("%d", finalCompleted), pterm.FgGreen.Sprintf("[DONE]")},
-			{"Total Workflows Failed", pterm.FgRed.Sprintf("%d", finalFailed), func() string {
+			{"Total Workflows Started", fmt.Sprintf("%d", finalStarted), "🚀 Launched"},
+			{"Total Workflows Completed", fmt.Sprintf("%d", finalCompleted), "✅ Done"},
+			{"Total Workflows Failed", fmt.Sprintf("%d", finalFailed), func() string {
 				if finalFailed > 0 {
-					return pterm.FgRed.Sprintf("[ISSUES]")
+					return "❌ Oof"
 				}
-				return pterm.FgGreen.Sprintf("[CLEAN]")
+				return "🎉 Perfect"
 			}()},
-			{"Final Active vUsers", pterm.FgYellow.Sprintf("%d/%d", finalActive, workerCount), func() string {
+			{"Final Active vUsers", fmt.Sprintf("%d/%d", finalActive, workerCount), func() string {
 				if finalActive > 0 {
-					return pterm.FgYellow.Sprintf("[DRAINING]")
+					return "⚠️ Oof"
 				}
-				return pterm.FgGreen.Sprintf("[CLEAR]")
+				return "🎉 Perfect"
 			}()},
-			{"Average CPU Usage", pterm.FgCyan.Sprintf("%.1f%%", avgCPU), cpuStatus(avgCPU)},
-			{"Average Memory Usage", pterm.FgMagenta.Sprintf("%.1f%%", avgMem), memStatus(avgMem)},
-			{"Average Workflow Time", pterm.FgYellow.Sprintf("%.2fs", avgWorkflowTime), pterm.FgBlue.Sprintf("[PACE]")},
-			{"Run Duration", pterm.FgCyan.Sprintf("%ds", elapsed), pterm.FgGreen.Sprintf("[DONE]")},
+			{"Average CPU Usage", fmt.Sprintf("%.1f%%", avgCPU), cpuStatus(avgCPU)},
+			{"Average Memory Usage", fmt.Sprintf("%.1f%%", avgMem), memStatus(avgMem)},
+			{"Average Workflow Time", fmt.Sprintf("%.2fs", avgWorkflowTime), "⏱️ Avg Duration"},
+			{"Run Duration", fmt.Sprintf("%ds", elapsed), "✅ Completed"},
 		}).Render()
 
 	summaryText := generateSummaryText(finalStarted, finalCompleted, finalFailed, finalActive, avgCPU, avgMem, avgWorkflowTime, float64(elapsed))
@@ -1486,18 +1486,18 @@ func printSingleWorkflowSummary() {
 		WithLeftAlignment().
 		WithData(TableData{
 			{"Metric", "Value", "Status"},
-			{"Total Workflows Started", pterm.FgCyan.Sprintf("%d", finalStarted), pterm.FgBlue.Sprintf("[STARTED]")},
-			{"Total Workflows Completed", pterm.FgLightGreen.Sprintf("%d", finalCompleted), pterm.FgGreen.Sprintf("[DONE]")},
-			{"Total Workflows Failed", pterm.FgRed.Sprintf("%d", finalFailed), func() string {
+			{"Total Workflows Started", fmt.Sprintf("%d", finalStarted), "🚀 Launched"},
+			{"Total Workflows Completed", fmt.Sprintf("%d", finalCompleted), "✅ Done"},
+			{"Total Workflows Failed", fmt.Sprintf("%d", finalFailed), func() string {
 				if finalFailed > 0 {
-					return pterm.FgRed.Sprintf("[ISSUES]")
+					return "❌ Oof"
 				}
-				return pterm.FgGreen.Sprintf("[CLEAN]")
+				return "🎉 Perfect"
 			}()},
-			{"Average CPU Usage", pterm.FgCyan.Sprintf("%.1f%%", avgCPU), cpuStatus(avgCPU)},
-			{"Average Memory Usage", pterm.FgMagenta.Sprintf("%.1f%%", avgMem), memStatus(avgMem)},
-			{"Average Workflow Time", pterm.FgYellow.Sprintf("%.2fs", avgWorkflowTime), pterm.FgBlue.Sprintf("[PACE]")},
-			{"Run Duration", pterm.FgCyan.Sprintf("%ds", elapsed), pterm.FgGreen.Sprintf("[DONE]")},
+			{"Average CPU Usage", fmt.Sprintf("%.1f%%", avgCPU), cpuStatus(avgCPU)},
+			{"Average Memory Usage", fmt.Sprintf("%.1f%%", avgMem), memStatus(avgMem)},
+			{"Average Workflow Time", fmt.Sprintf("%.2fs", avgWorkflowTime), "⏱️ Avg Duration"},
+			{"Run Duration", fmt.Sprintf("%ds", elapsed), "✅ Completed"},
 		}).Render()
 
 	// Save summary to file
