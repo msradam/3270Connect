@@ -1375,7 +1375,7 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 			{"Average CPU Usage", fmt.Sprintf("%.1f%%", avgCPU), cpuStatus(avgCPU)},
 			{"Average Memory Usage", fmt.Sprintf("%.1f%%", avgMem), memStatus(avgMem)},
 			{"Average Workflow Time", fmt.Sprintf("%.2fs", avgWorkflowTime), "⏱️ Pace Setter"},
-			{"Run Duration", fmt.Sprintf("%ds", elapsed), "🛎️ Done"},
+			{"Run Duration", fmt.Sprintf("%ds", elapsed), "🛎️ Completed"},
 		}).Render()
 
 	summaryText := generateSummaryText(finalStarted, finalCompleted, finalFailed, finalActive, avgCPU, avgMem, avgWorkflowTime, float64(elapsed))
@@ -1426,6 +1426,20 @@ func generateSummaryText(finalStarted, finalCompleted, finalFailed int64, finalA
 	return sb.String()
 }
 
+const (
+	colWidthTime      = 12
+	colWidthActive    = 16
+	colWidthStarted   = 14
+	colWidthCompleted = 14
+	colWidthFailed    = 12
+	colWidthElapsed   = 14
+	colWidthRemaining = 15
+	colWidthCPU       = 12
+	colWidthMem       = 12
+	colWidthRamp      = 12
+	colWidthGap       = 12
+)
+
 func formatWorkflowTotalsRows(started, completed, failed int64) []string {
 	return []string{
 		pterm.FgCyan.Sprintf("Started   : %d", started),
@@ -1437,15 +1451,15 @@ func formatWorkflowTotalsRows(started, completed, failed int64) []string {
 func formatLiveStatsRow(ts time.Time, elapsed, runtimeDuration, active, workerCount int, started, completed, failed int64, cpuUsage, memUsage float64) string {
 	remaining := max(runtimeDuration-elapsed, 0)
 	parts := []string{
-		pterm.FgBlue.Sprintf("%s", ts.Format("15:04:05")),
-		pterm.FgGreen.Sprintf("A:%d/%d", active, workerCount),
-		pterm.FgCyan.Sprintf("S:%d", started),
-		pterm.FgLightGreen.Sprintf("D:%d", completed),
-		pterm.FgRed.Sprintf("F:%d", failed),
-		pterm.FgYellow.Sprintf("E:%ds", elapsed),
-		pterm.FgMagenta.Sprintf("R:%ds", remaining),
-		pterm.FgCyan.Sprintf("C:%.1f%%", cpuUsage),
-		pterm.FgMagenta.Sprintf("M:%.1f%%", memUsage),
+		pterm.FgBlue.Sprintf("%-*s", colWidthTime, "🕒 "+ts.Format("15:04:05")),
+		pterm.FgGreen.Sprintf("%-*s", colWidthActive, fmt.Sprintf("🟢 %d/%d", active, workerCount)),
+		pterm.FgCyan.Sprintf("%-*s", colWidthStarted, fmt.Sprintf("🚀 %d", started)),
+		pterm.FgLightGreen.Sprintf("%-*s", colWidthCompleted, fmt.Sprintf("✅ %d", completed)),
+		pterm.FgRed.Sprintf("%-*s", colWidthFailed, fmt.Sprintf("❌ %d", failed)),
+		pterm.FgYellow.Sprintf("%-*s", colWidthElapsed, fmt.Sprintf("⏱️ %ds", elapsed)),
+		pterm.FgMagenta.Sprintf("%-*s", colWidthRemaining, fmt.Sprintf("⏳ %ds", remaining)),
+		pterm.FgCyan.Sprintf("%-*s", colWidthCPU, fmt.Sprintf("🧠 %.1f%%", cpuUsage)),
+		pterm.FgMagenta.Sprintf("%-*s", colWidthMem, fmt.Sprintf("💾 %.1f%%", memUsage)),
 	}
 	return strings.Join(parts, " | ")
 }
@@ -1454,17 +1468,17 @@ func formatPowerupRow(ts time.Time, overallStart time.Time, runtimeDuration int,
 	elapsed := int(time.Since(overallStart).Seconds())
 	remaining := max(runtimeDuration-elapsed, 0)
 	parts := []string{
-		pterm.FgBlue.Sprintf("%s", ts.Format("15:04:05")),
-		pterm.FgGreen.Sprintf("A:%d/%d", active, workerCount),
-		pterm.FgCyan.Sprintf("S:%d", started),
-		pterm.FgLightGreen.Sprintf("D:%d", completed),
-		pterm.FgRed.Sprintf("F:%d", failed),
-		pterm.FgYellow.Sprintf("E:%ds", elapsed),
-		pterm.FgMagenta.Sprintf("R:%ds", remaining),
-		pterm.FgCyan.Sprintf("C:%.1f%%", cpuUsage),
-		pterm.FgMagenta.Sprintf("M:%.1f%%", memUsage),
-		pterm.FgLightGreen.Sprintf("RAMP +%d", addedThisBatch),
-		pterm.FgYellow.Sprintf("GAP:%d", workerCount-active),
+		pterm.FgBlue.Sprintf("%-*s", colWidthTime, "🕒 "+ts.Format("15:04:05")),
+		pterm.FgGreen.Sprintf("%-*s", colWidthActive, fmt.Sprintf("🟢 %d/%d", active, workerCount)),
+		pterm.FgCyan.Sprintf("%-*s", colWidthStarted, fmt.Sprintf("🚀 %d", started)),
+		pterm.FgLightGreen.Sprintf("%-*s", colWidthCompleted, fmt.Sprintf("✅ %d", completed)),
+		pterm.FgRed.Sprintf("%-*s", colWidthFailed, fmt.Sprintf("❌ %d", failed)),
+		pterm.FgYellow.Sprintf("%-*s", colWidthElapsed, fmt.Sprintf("⏱️ %ds", elapsed)),
+		pterm.FgMagenta.Sprintf("%-*s", colWidthRemaining, fmt.Sprintf("⏳ %ds", remaining)),
+		pterm.FgCyan.Sprintf("%-*s", colWidthCPU, fmt.Sprintf("🧠 %.1f%%", cpuUsage)),
+		pterm.FgMagenta.Sprintf("%-*s", colWidthMem, fmt.Sprintf("💾 %.1f%%", memUsage)),
+		pterm.FgLightGreen.Sprintf("%-*s", colWidthRamp, fmt.Sprintf("⚡ +%d", addedThisBatch)),
+		pterm.FgYellow.Sprintf("%-*s", colWidthGap, fmt.Sprintf("🪫 %d", workerCount-active)),
 	}
 	return strings.Join(parts, " | ")
 }
@@ -1515,7 +1529,7 @@ func printSingleWorkflowSummary() {
 			{"Average CPU Usage", fmt.Sprintf("%.1f%%", avgCPU), cpuStatus(avgCPU)},
 			{"Average Memory Usage", fmt.Sprintf("%.1f%%", avgMem), memStatus(avgMem)},
 			{"Average Workflow Time", fmt.Sprintf("%.2fs", avgWorkflowTime), "⏱️ Pace Setter"},
-			{"Run Duration", fmt.Sprintf("%ds", elapsed), "🛎️ Done"},
+			{"Run Duration", fmt.Sprintf("%ds", elapsed), "🛎️ Completed"},
 		}).Render()
 
 	// Save summary to file
