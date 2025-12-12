@@ -7,7 +7,6 @@ import (
 	"os"
 
 	"github.com/jchv/go-webview2"
-	"github.com/pterm/pterm"
 )
 
 func openDashboardEmbedded() {
