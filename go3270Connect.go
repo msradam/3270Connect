@@ -135,6 +135,11 @@ var startDashboard = flag.Bool("dashboard", false, "Start the dashboard and open
 
 var enableProgressBar bool
 
+func init() {
+	flag.BoolVar(&enableProgressBar, "bar", false, "Show progress bars and hide INFO log messages")
+	flag.BoolVar(&enableProgressBar, "enableProgressBar", false, "DEPRECATED: use -bar instead")
+}
+
 var runAppPort int
 var metricsConfigFilePath string
 var metricsOutputFilePath string
@@ -270,7 +275,6 @@ func init() {
 	flag.IntVar(&workflowTimeout, "workflowTimeout", 0, "Hard timeout per workflow in seconds (0 to disable)")
 	flag.BoolVar(&showConnectionErrors, "showConnectionErrors", false, "Treat connection failures as errors and report them")
 	flag.IntVar(&dashboardPort, "dashboardPort", 9200, "Port for the dashboard server")
-	flag.BoolVar(&enableProgressBar, "enableProgressBar", false, "Enable progress bar and hide INFO log messages")
 
 	// Set up pterm with a funky theme
 	pterm.DefaultSection.Style = pterm.NewStyle(pterm.FgCyan, pterm.Bold)
@@ -908,9 +912,10 @@ func printBanner() {
 	clear()
 
 	pterm.RenderBanner("3270Connect", "")
+	pterm.Println()
 	pterm.Info.Println("Version: " + pterm.LightGreen(version))
 	pterm.Info.Println("Website: " + pterm.LightGreen("https://3270.io"))
-	pterm.Info.Println("Author: " + pterm.LightGreen("EyUp"))
+	pterm.Info.Println("Author: " + pterm.LightGreen("EyUp.io"))
 	pterm.Info.Println("Runtime Environment: " + pterm.LightYellow(getExecutablePath()+" ") + pterm.White(strings.Join(os.Args[1:], " ")))
 	pterm.Println()
 }
@@ -1167,7 +1172,7 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 			Start()
 		pterm.Println()
 	} else {
-		pterm.Info.Println("Progress bar disabled. Live stats update every 5s (use -enableProgressBar for gauges).")
+		pterm.Info.Println("Progress bar disabled. Live stats update every 5s (use -bar for gauges).")
 		tickerInterval = 5 * time.Second
 	}
 
@@ -1188,14 +1193,15 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 				started := atomic.LoadInt64(&totalWorkflowsStarted)
 				completed := atomic.LoadInt64(&totalWorkflowsCompleted)
 				failed := atomic.LoadInt64(&totalWorkflowsFailed)
+				metricsSuffix := pterm.Sprintf(" | S:%d C:%d F:%d", started, completed, failed)
 
 				if enableProgressBar {
 					if durationBar != nil {
 						durationBar.Current = min(elapsed, runtimeDuration)
 						if elapsed < runtimeDuration {
-							durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Run Duration (%ds left)", runtimeDuration-elapsed)))
+							durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Run Duration (%ds left)", runtimeDuration-elapsed)) + metricsSuffix)
 						} else {
-							durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, "Run Duration (Completed)"))
+							durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, "Run Duration (Completed)") + metricsSuffix)
 						}
 					}
 					if cpuBar != nil {
@@ -1293,7 +1299,25 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 		storeLog(msg)
 	}
 
+	if stopTicker != nil {
+		close(stopTicker)
+		stopTicker = nil
+	}
+
 	if enableProgressBar {
+		elapsed := int(time.Since(overallStart).Seconds())
+		started := atomic.LoadInt64(&totalWorkflowsStarted)
+		completed := atomic.LoadInt64(&totalWorkflowsCompleted)
+		failed := atomic.LoadInt64(&totalWorkflowsFailed)
+		metricsSuffix := pterm.Sprintf(" | S:%d C:%d F:%d", started, completed, failed)
+		if durationBar != nil {
+			durationBar.WithTotal(elapsed)
+			durationBar.Current = elapsed
+			const titleWidth = 30
+			durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Run Duration (%ds elapsed)", elapsed)) + metricsSuffix)
+		}
+		pterm.RenderProgressBars(activeBar, durationBar, cpuBar, memBar)
+		pterm.Println()
 		multi.Stop()
 	}
 
@@ -1314,22 +1338,6 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 	}
 	storeLog("All workflows completed after runtimeDuration ended.")
 
-	if stopTicker != nil {
-		close(stopTicker)
-	}
-
-	if enableProgressBar {
-		elapsed := int(time.Since(overallStart).Seconds())
-		if durationBar != nil {
-			durationBar.WithTotal(elapsed)
-			durationBar.Current = elapsed
-			const titleWidth = 30
-			durationBar.UpdateTitle(pterm.Sprintf("%-*s", titleWidth, fmt.Sprintf("Run Duration (%ds elapsed)", elapsed)))
-		}
-		pterm.RenderProgressBars(activeBar, durationBar, cpuBar, memBar)
-		pterm.Println()
-	}
-
 	avgCPU := getAverageCPUUsage()
 	avgMem := getAverageMemoryUsage()
 	avgWorkflowTime := getAverageWorkflowDuration()
@@ -1342,30 +1350,32 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 	printBanner()
 	pterm.Success.Println("All workflows wrapped up - Time for a victory lap!")
 	elapsed := int(time.Since(overallStart).Seconds())
+	pterm.Println()
 	pterm.DefaultSection.WithStyle(pterm.NewStyle(pterm.FgCyan)).Println("Run Summary - Performance Report")
+	pterm.Println()
 	pterm.DefaultTable.
 		WithHasHeader().
 		WithLeftAlignment().
 		WithData(TableData{
 			{"Metric", "Value", "Status"},
-			{"Total Workflows Started", fmt.Sprintf("%d", finalStarted), "🚀 Launched"},
-			{"Total Workflows Completed", fmt.Sprintf("%d", finalCompleted), "✅ Done"},
+			{"Total Workflows Started", fmt.Sprintf("%d", finalStarted), "🚀 Launch Party"},
+			{"Total Workflows Completed", fmt.Sprintf("%d", finalCompleted), "🏁 Victory Lap"},
 			{"Total Workflows Failed", fmt.Sprintf("%d", finalFailed), func() string {
 				if finalFailed > 0 {
-					return "❌ Oof"
+					return "💥 Gremlins"
 				}
-				return "🎉 Perfect"
+				return "🧼 Squeaky"
 			}()},
 			{"Final Active vUsers", fmt.Sprintf("%d/%d", finalActive, workerCount), func() string {
 				if finalActive > 0 {
-					return "⚠️ Oof"
+					return "🐝 Still Buzzing"
 				}
-				return "🎉 Perfect"
+				return "🧘 All Zen"
 			}()},
 			{"Average CPU Usage", fmt.Sprintf("%.1f%%", avgCPU), cpuStatus(avgCPU)},
 			{"Average Memory Usage", fmt.Sprintf("%.1f%%", avgMem), memStatus(avgMem)},
-			{"Average Workflow Time", fmt.Sprintf("%.2fs", avgWorkflowTime), "⏱️ Avg Duration"},
-			{"Run Duration", fmt.Sprintf("%ds", elapsed), "✅ Completed"},
+			{"Average Workflow Time", fmt.Sprintf("%.2fs", avgWorkflowTime), "⏱️ Pace Setter"},
+			{"Run Duration", fmt.Sprintf("%ds", elapsed), "🛎️ Done"},
 		}).Render()
 
 	summaryText := generateSummaryText(finalStarted, finalCompleted, finalFailed, finalActive, avgCPU, avgMem, avgWorkflowTime, float64(elapsed))
@@ -1382,22 +1392,22 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 func cpuStatus(cpu float64) string {
 	switch {
 	case cpu < 50:
-		return pterm.FgGreen.Sprintf("[OK]")
+		return "🧊 Chill"
 	case cpu < 80:
-		return pterm.FgYellow.Sprintf("[WARM]")
+		return "🌶️ Toasty"
 	default:
-		return pterm.FgRed.Sprintf("[HIGH]")
+		return "🔥 Melting"
 	}
 }
 
 func memStatus(mem float64) string {
 	switch {
 	case mem < 50:
-		return pterm.FgGreen.Sprintf("[OK]")
+		return "🧊 Chill"
 	case mem < 80:
-		return pterm.FgYellow.Sprintf("[WARM]")
+		return "🌶️ Toasty"
 	default:
-		return pterm.FgRed.Sprintf("[HIGH]")
+		return "🔥 Melting"
 	}
 }
 
@@ -1486,18 +1496,18 @@ func printSingleWorkflowSummary() {
 		WithLeftAlignment().
 		WithData(TableData{
 			{"Metric", "Value", "Status"},
-			{"Total Workflows Started", fmt.Sprintf("%d", finalStarted), "🚀 Launched"},
-			{"Total Workflows Completed", fmt.Sprintf("%d", finalCompleted), "✅ Done"},
+			{"Total Workflows Started", fmt.Sprintf("%d", finalStarted), "🚀 Launch Party"},
+			{"Total Workflows Completed", fmt.Sprintf("%d", finalCompleted), "🏁 Victory Lap"},
 			{"Total Workflows Failed", fmt.Sprintf("%d", finalFailed), func() string {
 				if finalFailed > 0 {
-					return "❌ Oof"
+					return "💥 Gremlins"
 				}
-				return "🎉 Perfect"
+				return "🧼 Squeaky"
 			}()},
 			{"Average CPU Usage", fmt.Sprintf("%.1f%%", avgCPU), cpuStatus(avgCPU)},
 			{"Average Memory Usage", fmt.Sprintf("%.1f%%", avgMem), memStatus(avgMem)},
-			{"Average Workflow Time", fmt.Sprintf("%.2fs", avgWorkflowTime), "⏱️ Avg Duration"},
-			{"Run Duration", fmt.Sprintf("%ds", elapsed), "✅ Completed"},
+			{"Average Workflow Time", fmt.Sprintf("%.2fs", avgWorkflowTime), "⏱️ Pace Setter"},
+			{"Run Duration", fmt.Sprintf("%ds", elapsed), "🛎️ Done"},
 		}).Render()
 
 	// Save summary to file
@@ -2408,6 +2418,7 @@ func showErrors() {
 	errorMutex.Lock()
 	defer errorMutex.Unlock()
 	if len(errorList) == 0 {
+		pterm.Println()
 		pterm.Info.Println("No errors encountered during the workflows.")
 		return
 	}

@@ -15,7 +15,8 @@ To run a workflow, use the following command:
 - `-showConnectionErrors`: By default, connection failures for the `Connect` step are informational and do not increment the failed workflow counter. Set this flag to surface connection failures as errors and include them in the failure tally.
 - `WaitForField` (config, default `true`): When true, every successful `Connect` waits for the terminal to unlock an input field (1s timeout, 10 retries) before moving to the next step. Set it to `false` if you want to control waiting yourself with explicit `WaitForField` steps.
 - `-workflowTimeout`: Hard timeout (seconds) per workflow. A zero value disables the per-workflow timeout.
-- `-verboseFailures`: Emit concise failure-only logs (step, script port, error) without enabling full verbose mode—useful for high-concurrency runs where you only want failure diagnostics.
+- `-verboseFailures`: Emit concise failure-only logs (step, script port, error) without enabling full verbose mode-useful for high-concurrency runs where you only want failure diagnostics.
+- `-bar`: Enable compact progress bars and hide the live INFO rows. (Deprecated alias: `-enableProgressBar`.)
 
 ### Injecting a runtime RSA token
 

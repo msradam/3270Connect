@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	figure "github.com/common-nighthawk/go-figure"
 )
 
 // Color and style helpers
@@ -572,31 +573,28 @@ func (p *charmPterm) Sprintf(format string, args ...interface{}) string {
 }
 
 func (p *charmPterm) RenderBanner(title, subtitle string) {
-	lines := []string{
-		"   _____ _____ ___   ____    ___    ____   ___  ",
-		"  /__  // ____/   | / __ \\  /   |  / __ \\ /   | ",
-		"    / // /   / /| |/ /_/ / / /| | / / / // /| | ",
-		"   / // /___/ ___ / _, _/ / ___ |/ /_/ // ___ | ",
-		"  /_/ \\____/_/  |_/_/ |_| /_/  |_|\\____//_/  |_|",
-	}
-	accent := lipgloss.NewStyle().Foreground(lipgloss.Color("#22d3ee")).Bold(true)
-	shadow := lipgloss.NewStyle().Foreground(lipgloss.Color("#0ea5e9"))
-	highlight := lipgloss.NewStyle().Foreground(lipgloss.Color("#a3e635")).Bold(true)
+	accent := lipgloss.NewStyle().Foreground(lipgloss.Color("#0c6600")).Bold(true)
+	shadow := lipgloss.NewStyle().Foreground(lipgloss.Color("#00bb2fff"))
+	highlight := lipgloss.NewStyle().Foreground(lipgloss.Color("#00e927ff")).Bold(true)
 
-	for i, l := range lines {
+	text := strings.TrimSpace(strings.ToUpper(strings.TrimSpace(strings.Join(filterEmpty([]string{title, subtitle}), " "))))
+	if text == "" {
+		text = "3270CONNECT"
+	}
+
+	fig := figure.NewFigure(text, "", true)
+	raw := strings.TrimRight(fig.String(), "\n")
+	lines := strings.Split(raw, "\n")
+	for i, line := range lines {
 		if i%2 == 0 {
-			fmt.Println(accent.Render(l))
+			fmt.Println(accent.Render(line))
 		} else {
-			fmt.Println(shadow.Render(l))
+			fmt.Println(shadow.Render(line))
 		}
 	}
 
-	joined := strings.TrimSpace(strings.ToUpper(strings.TrimSpace(strings.Join(filterEmpty([]string{title, subtitle}), " "))))
-	if joined == "" {
-		joined = "3270 CONNECT"
-	}
-	label := fmt.Sprintf(" %s ", joined)
-	fmt.Println(highlight.Render(label))
+	tagline := "Hammering 3270 screens since 2023"
+	fmt.Println(highlight.Render(strings.ToUpper(tagline)))
 }
 
 func filterEmpty(items []string) []string {
