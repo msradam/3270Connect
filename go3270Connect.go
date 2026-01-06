@@ -9,7 +9,6 @@ import (
 	"html/template"
 	"io"
 	"io/fs"
-	"io/ioutil"
 	"math/rand"
 	"net"
 	"net/http"
@@ -131,8 +130,9 @@ var timingsMutex sync.Mutex
 var workflowDurations []float64
 var workflowDurationSum float64
 var (
-	delayRNGMu sync.Mutex // protects delayRNG for concurrent workflow runs
-	delayRNG   = rand.New(rand.NewSource(time.Now().UnixNano()))
+	delayRNGMu           sync.Mutex // protects delayRNG for concurrent workflow runs
+	delayRNG             = rand.New(rand.NewSource(time.Now().UnixNano()))
+	negativeDelayLogOnce sync.Once
 )
 
 var workflowDurationCount int64
@@ -426,7 +426,7 @@ func loadInputFile(filePath string) ([]Step, error) {
 	if connect3270.Verbose {
 		pterm.Info.Printf("Loading input file: %s\n", filePath)
 	}
-	data, err := ioutil.ReadFile(filePath)
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		spinner.Fail("Input file read failed - disk gremlins:", err)
 		return nil, fmt.Errorf("error reading input file: %v", err)
@@ -639,7 +639,7 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration, ove
 	tmpFileName := config.OutputFilePath
 	cleanupTempFile := false
 	if tmpFileName == "" {
-		tmpFile, err := ioutil.TempFile("", "workflowOutput_")
+		tmpFile, err := os.CreateTemp("", "workflowOutput_")
 		if err != nil {
 			return handleError(err, fmt.Sprintf("Temp file creation failed - disk’s playing hide and seek: %v", err))
 		}
@@ -751,6 +751,13 @@ func secondsToDuration(seconds float64) time.Duration {
 
 func randomDuration(rangeConfig DelayRange) time.Duration {
 	if rangeConfig.Min < 0 || rangeConfig.Max < 0 {
+		negativeDelayLogOnce.Do(func() {
+			msg := "DelayRange contains negative values; ignoring delay configuration"
+			if connect3270.Verbose {
+				pterm.Warning.Println(msg)
+			}
+			storeLog(msg)
+		})
 		return 0
 	}
 	min := rangeConfig.Min
@@ -796,7 +803,7 @@ func runAPIWorkflow() {
 			sendErrorResponse(c, http.StatusBadRequest, "Invalid workflow configuration", err)
 			return
 		}
-		tmpFile, err := ioutil.TempFile("", "workflowOutput_")
+		tmpFile, err := os.CreateTemp("", "workflowOutput_")
 		if err != nil {
 			pterm.Error.Println("Temp file creation failed - disk’s napping:", err)
 			sendErrorResponse(c, http.StatusInternalServerError, "Failed to create temp file", err)
@@ -2035,7 +2042,7 @@ func readDashboardMetrics(baseDir string) ([]Metrics, []ExtendedMetrics) {
 			continue
 		}
 
-		data, err := ioutil.ReadFile(f)
+		data, err := os.ReadFile(f)
 		if err != nil {
 			if os.IsNotExist(err) {
 				continue
@@ -2148,7 +2155,7 @@ func updateMetricsFile() {
 	dashboardDir := dashboardMetricsDir()
 	os.MkdirAll(dashboardDir, 0755)
 	filePath := filepath.Join(dashboardDir, fmt.Sprintf("metrics_%d.json", pid))
-	if err := ioutil.WriteFile(filePath, data, 0644); err != nil {
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
 		pterm.Warning.Printf("Metrics file write failed for pid %d - disk’s grumpy: %v\n", pid, err)
 	}
 	maybeCleanupDashboardArtifacts()
@@ -2179,7 +2186,7 @@ func aggregateMetrics() Metrics {
 			continue
 		}
 
-		data, err := ioutil.ReadFile(f)
+		data, err := os.ReadFile(f)
 		if err != nil {
 			// File may have been deleted between Stat and ReadFile, silently continue
 			if os.IsNotExist(err) {
@@ -2866,7 +2873,7 @@ func updateKilledStatus(pid int) {
 	//pterm.Info.Printf("Reading metrics file: %s\n", metricsFile)
 	storeLog(fmt.Sprintf("Reading metrics file: %s", metricsFile))
 
-	data, err := ioutil.ReadFile(metricsFile)
+	data, err := os.ReadFile(metricsFile)
 	if err != nil {
 		pterm.Warning.Printf("Failed to read metrics file for PID %d: %v\n", pid, err)
 		storeLog(fmt.Sprintf("Failed to read metrics file for PID %d: %v", pid, err))
@@ -2893,7 +2900,7 @@ func updateKilledStatus(pid int) {
 		storeLog(fmt.Sprintf("Failed to marshal updated metrics for PID %d: %v", pid, err))
 		return
 	}
-	if err := ioutil.WriteFile(metricsFile, updatedData, 0644); err != nil {
+	if err := os.WriteFile(metricsFile, updatedData, 0644); err != nil {
 		pterm.Warning.Printf("Failed to write updated metrics for PID %d: %v\n", pid, err)
 		storeLog(fmt.Sprintf("Failed to write updated metrics for PID %d: %v", pid, err))
 		return
