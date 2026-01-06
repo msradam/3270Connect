@@ -128,8 +128,10 @@ var mutex sync.Mutex
 var timingsMutex sync.Mutex
 var workflowDurations []float64
 var workflowDurationSum float64
-var delayRNGMu sync.Mutex
-var delayRNG = rand.New(rand.NewSource(time.Now().UnixNano()))
+var (
+	delayRNGMu sync.Mutex // protects delayRNG for concurrent workflow runs
+	delayRNG   = rand.New(rand.NewSource(time.Now().UnixNano()))
+)
 
 var workflowDurationCount int64
 
@@ -751,13 +753,14 @@ func randomDuration(rangeConfig DelayRange) time.Duration {
 	}
 	min := rangeConfig.Min
 	max := rangeConfig.Max
+	// If only Min is provided, treat it as a fixed delay.
 	if max == 0 && min > 0 {
 		max = min
 	}
-	if max < min {
+	if max == 0 && min == 0 {
 		return 0
 	}
-	if max == 0 && min == 0 {
+	if max < min {
 		return 0
 	}
 	delaySeconds := min
@@ -766,9 +769,6 @@ func randomDuration(rangeConfig DelayRange) time.Duration {
 		randomPortion := delayRNG.Float64()
 		delayRNGMu.Unlock()
 		delaySeconds += randomPortion * (max - min)
-	}
-	if delaySeconds <= 0 {
-		return 0
 	}
 	return time.Duration(delaySeconds * float64(time.Second))
 }
