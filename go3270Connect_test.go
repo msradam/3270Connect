@@ -21,7 +21,7 @@ func TestRandomDurationDefaultsMaxToMin(t *testing.T) {
 	oldRng := delayRNG
 	delayRNG = rand.New(rand.NewSource(2))
 	defer func() { delayRNG = oldRng }()
-	expected := time.Duration(1500 * time.Millisecond)
+	expected := 1500 * time.Millisecond
 	delay := randomDuration(DelayRange{Min: 1.5})
 	if delay != expected {
 		t.Fatalf("expected delay %v, got %v", expected, delay)

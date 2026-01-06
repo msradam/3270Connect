@@ -38,7 +38,7 @@ To run a single workflow, create a JSON configuration file that describes the wo
 {
   "Host": "10.27.27.62",
   "Port": 3270,
-  "EveryStepDelay": { "Min": 0.1, "Max": 0.25 },
+  "EveryStepDelay": { "Min": 0.1, "Max": 0.3 },
   "WaitForField": true, // optional (default true) to wait after Connect
   "WorkflowTimeout": 120, // optional per-workflow timeout in seconds (0 to disable)
   "HTMLFilePath": "output.html",

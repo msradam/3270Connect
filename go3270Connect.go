@@ -753,12 +753,12 @@ func randomDuration(rangeConfig DelayRange) time.Duration {
 	}
 	min := rangeConfig.Min
 	max := rangeConfig.Max
-	// If only Min is provided, treat it as a fixed delay.
-	if max == 0 && min > 0 {
-		max = min
-	}
-	if max == 0 && min == 0 {
+	if min == 0 && max == 0 {
 		return 0
+	}
+	// If only Min is provided, treat it as a fixed delay.
+	if max == 0 {
+		max = min
 	}
 	if max < min {
 		return 0
