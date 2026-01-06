@@ -49,9 +49,11 @@ const (
 var errorList []error
 var errorMutex sync.Mutex
 
+// DelayRange represents a randomized delay window in seconds. When Max is
+// omitted (zero) but Min is set, Max defaults to Min. Set both Min and Max to
+// zero to disable the delay entirely.
 type DelayRange struct {
 	Min float64 `json:"Min,omitempty"`
-	// Max defaults to Min when omitted.
 	Max float64 `json:"Max,omitempty"`
 }
 
