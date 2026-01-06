@@ -40,15 +40,11 @@ To run a single workflow, create a JSON configuration file that describes the wo
   "Port": 3270,
   "EveryStepDelay": { "Min": 0.1, "Max": 0.3 },
   "WaitForField": true, // optional (default true) to wait after Connect
-  "WorkflowTimeout": 120, // optional per-workflow timeout in seconds (0 to disable)
-  "HTMLFilePath": "output.html",
+  "OutputFilePath": "output.html", // optional; if omitted a temp file is used
   "RampUpBatchSize": 10, //optional for concurrency runs
   "RampUpDelay": 1, //optional for concurrency runs
   "EndOfTaskDelay": { "Min": 30, "Max": 90 },
   "Steps": [
-    {
-      "Type": "InitializeHTMLFile"
-    },
     {
       "Type": "Connect"
     },

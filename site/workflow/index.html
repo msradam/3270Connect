@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../logo.ico">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.0">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.618322db.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -350,7 +350,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../BUILD.md" class="md-tabs__link">
+        <a href="../BUILD/" class="md-tabs__link">
           
   
   
@@ -653,10 +653,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#humandelay" class="md-nav__link">
+  <a href="#waitforfield" class="md-nav__link">
     <span class="md-ellipsis">
       
-        HumanDelay
+        WaitForField
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stepdelay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        StepDelay
       
     </span>
   </a>
@@ -668,6 +679,28 @@
     <span class="md-ellipsis">
       
         PressEnter
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#presstab" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PressTab
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#presspf1-presspf24" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PressPF1 ... PressPF24
       
     </span>
   </a>
@@ -824,7 +857,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../BUILD.md" class="md-nav__link">
+      <a href="../BUILD/" class="md-nav__link">
         
   
   
@@ -852,7 +885,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../MAKEFILE_QUICKREF.md" class="md-nav__link">
+      <a href="../MAKEFILE_QUICKREF/" class="md-nav__link">
         
   
   
@@ -943,13 +976,19 @@
 <div><h1 id="workflow-steps-documentation">Workflow Steps Documentation<a class="headerlink" href="#workflow-steps-documentation" title="Permanent link">¶</a></h1>
 <p>This page provides an overview of the various workflow steps available in the 3270Connect application. Each step represents an individual action taken on the terminal during a workflow execution.</p>
 <h2 id="delay-behavior">Delay Behavior<a class="headerlink" href="#delay-behavior" title="Permanent link">¶</a></h2>
-<p>You can control pacing with a top-level <code>Delay</code> value (seconds, just like <code>RampUpDelay</code>). When set, 3270Connect pauses for that many seconds between every step in the workflow. Pair this with the new <code>HumanDelay</code> step type when you need targeted pauses between specific actions.</p>
+<p>You can control pacing with flexible delay ranges:</p>
+<ul>
+<li><strong>EveryStepDelay</strong> (workflow-level): Adds a randomized pause between every step using <code>Min</code>/<code>Max</code> values (sub-second friendly) to mimic keystrokes and host reaction time.</li>
+<li><strong>StepDelay</strong> (step-level): Insert this step when you need a targeted hesitation using a <code>StepDelay</code> object with <code>Min</code>/<code>Max</code> values (typically seconds).</li>
+<li><strong>EndOfTaskDelay</strong> (workflow-level): Adds a randomized pause after the final step to model user think-time between repeats (minutes-scale ranges are common).</li>
+</ul>
+<p>Legacy <code>Delay</code> and <code>HumanDelay</code> settings are no longer used.</p>
 <h2 id="available-workflow-steps">Available Workflow Steps<a class="headerlink" href="#available-workflow-steps" title="Permanent link">¶</a></h2>
 <h3 id="initializeoutput">InitializeOutput<a class="headerlink" href="#initializeoutput" title="Permanent link">¶</a></h3>
 <ul>
-<li><strong>Description</strong>: Initializes the output file with run details.</li>
-<li><strong>Parameters</strong>: <code>outputFilePath</code> (string) - Path to the output file.</li>
-<li><strong>Usage</strong>: This step is used to set up the output file before executing other steps.</li>
+<li><strong>Description</strong>: (Optional) Re-initializes the workflow output file.</li>
+<li><strong>Parameters</strong>: None.</li>
+<li><strong>Usage</strong>: In most cases you do not need this step: the output file is initialized automatically at the start of each workflow run. The output destination comes from the top-level <code>OutputFilePath</code> setting (CLI mode) or an internal temporary file (API mode).</li>
 </ul>
 <h3 id="connect">Connect<a class="headerlink" href="#connect" title="Permanent link">¶</a></h3>
 <ul>
@@ -972,22 +1011,39 @@
 <li><code>Text</code> (string) - The text to fill at the coordinates.</li>
 <li><strong>Usage</strong>: This step is used to input text at a specific position on the terminal.</li>
 </ul>
+<p>If <code>Coordinates</code> is omitted (or <code>Row</code>/<code>Column</code> are both <code>0</code>), the text is typed at the current cursor position.</p>
 <h3 id="asciiscreengrab">AsciiScreenGrab<a class="headerlink" href="#asciiscreengrab" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Description</strong>: Captures and appends the ASCII representation of the current screen to the output file.</li>
-<li><strong>Parameters</strong>: <code>outputFilePath</code> (string) - Path to the output file.</li>
+<li><strong>Parameters</strong>: None.</li>
 <li><strong>Usage</strong>: To capture the current state of the terminal screen as ASCII text.</li>
 </ul>
-<h3 id="humandelay">HumanDelay<a class="headerlink" href="#humandelay" title="Permanent link">¶</a></h3>
+<h3 id="waitforfield">WaitForField<a class="headerlink" href="#waitforfield" title="Permanent link">¶</a></h3>
 <ul>
-<li><strong>Description</strong>: Inserts a custom pause to mimic human timing between automated interactions.</li>
-<li><strong>Parameters</strong>: <code>Delay</code> (float) - Number of seconds to wait before the workflow proceeds.</li>
-<li><strong>Usage</strong>: Use when a step needs extra time to settle (e.g., waiting for a slow screen refresh) without adding keystrokes.</li>
+<li><strong>Description</strong>: Waits for the terminal to unlock an input field (keyboard ready) before proceeding.</li>
+<li><strong>Parameters</strong>: Optional <code>Delay</code> (float, seconds) to override the default 1 second timeout used per retry.</li>
+<li><strong>Usage</strong>: Insert after <code>Connect</code> or after navigation steps (e.g., <code>PressEnter</code>) when the host is slow to render screens. This is also applied automatically after <code>Connect</code> when the top-level <code>WaitForField</code> setting is <code>true</code> (default).</li>
+</ul>
+<h3 id="stepdelay">StepDelay<a class="headerlink" href="#stepdelay" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Description</strong>: Inserts a randomized pause to mimic human timing between automated interactions.</li>
+<li><strong>Parameters</strong>: <code>StepDelay.Min</code> and <code>StepDelay.Max</code> (float, seconds) - Bounds for the pause duration.</li>
+<li><strong>Usage</strong>: Add just before actions that benefit from a brief hesitation (for example, immediately before <code>PressEnter</code>).</li>
 </ul>
 <h3 id="pressenter">PressEnter<a class="headerlink" href="#pressenter" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>Description</strong>: Simulates pressing the Enter key.</li>
 <li><strong>Usage</strong>: Commonly used to submit data or commands entered on the terminal.</li>
+</ul>
+<h3 id="presstab">PressTab<a class="headerlink" href="#presstab" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Description</strong>: Simulates pressing the Tab key.</li>
+<li><strong>Usage</strong>: Useful for moving focus/cursor between fields on some host screens.</li>
+</ul>
+<h3 id="presspf1-presspf24">PressPF1 ... PressPF24<a class="headerlink" href="#presspf1-presspf24" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Description</strong>: Simulates pressing a Program Function key (PF1 through PF24).</li>
+<li><strong>Usage</strong>: Use the PF key that matches your host application navigation.</li>
 </ul>
 <h3 id="disconnect">Disconnect<a class="headerlink" href="#disconnect" title="Permanent link">¶</a></h3>
 <ul>
@@ -997,14 +1053,12 @@
 <h2 id="example-workflow">Example Workflow<a class="headerlink" href="#example-workflow" title="Permanent link">¶</a></h2>
 <p>Here is an example of how these steps might be sequenced in a typical workflow:</p>
 <ol>
-<li><strong>InitializeOutput</strong>: Set up the output file.</li>
 <li><strong>Connect</strong>: Connect to the terminal.</li>
-<li><strong>FillString</strong>: Input a username at the specified coordinates.</li>
-<li><strong>PressEnter</strong>: Submit the username.</li>
-<li><strong>FillString</strong>: Input a password at the specified coordinates.</li>
-<li><strong>PressEnter</strong>: Submit the password.</li>
-<li><strong>CheckValue</strong>: Verify successful login by checking for a welcome message.</li>
-<li><strong>AsciiScreenGrab</strong>: Capture the screen after login.</li>
+<li><strong>AsciiScreenGrab</strong>: Capture the initial screen.</li>
+<li><strong>FillString</strong>: Populate fields.</li>
+<li><strong>StepDelay</strong>: Add a targeted pause (optional).</li>
+<li><strong>PressEnter</strong>: Submit.</li>
+<li><strong>AsciiScreenGrab</strong>: Capture the post-submit screen.</li>
 <li><strong>Disconnect</strong>: Disconnect from the terminal.</li>
 </ol>
 <p>Each step plays a crucial role in the automated interaction with the terminal. By combining these steps, complex workflows can be executed seamlessly.</p></div>
@@ -1144,10 +1198,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.instant.progress", "navigation.expand", "navigation.sections", "navigation.tabs", "navigation.top", "navigation.footer", "header.autohide", "search.suggest", "search.highlight", "content.code.copy", "content.action.edit", "content.action.view", "toc.integrate", "content.tabs.link", "content.footnotes"], "search": "../assets/javascripts/workers/search.7a47a382.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": 1.6}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.instant.progress", "navigation.expand", "navigation.sections", "navigation.tabs", "navigation.top", "navigation.footer", "header.autohide", "search.suggest", "search.highlight", "content.code.copy", "content.action.edit", "content.action.view", "toc.integrate", "content.tabs.link", "content.footnotes"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": 1.6}</script>
     
     
-      <script src="../assets/javascripts/bundle.e71a0d61.min.js"></script>
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

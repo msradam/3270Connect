@@ -27,12 +27,10 @@ Body:
 {
   "Host": "10.27.27.27",
   "Port": 3270,
-  "HTMLFilePath": "output.html",
   "Token": "123456",
+  "EveryStepDelay": { "Min": 0.1, "Max": 0.3 },
+  "EndOfTaskDelay": { "Min": 30, "Max": 90 },
   "Steps": [
-    {
-      "Type": "InitializeHTMLFile"
-    },
     {
       "Type": "Connect"
     },
@@ -58,6 +56,10 @@ Body:
       "Type": "AsciiScreenGrab"
     },
     {
+      "Type": "StepDelay",
+      "StepDelay": { "Min": 1.0, "Max": 2.0 }
+    },
+    {
       "Type": "PressEnter"
     },
     {
@@ -69,6 +71,8 @@ Body:
   ]
 }
 ```
+
+The API responds with the rendered output in the JSON response body (it does not require an `OutputFilePath`).
 
 - `Token` (optional): provide a one-time RSA token that will be injected wherever the workflow text contains `{{token}}`.
 

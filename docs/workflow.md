@@ -15,9 +15,9 @@ Legacy `Delay` and `HumanDelay` settings are no longer used.
 ## Available Workflow Steps
 
 ### InitializeOutput
-- **Description**: Initializes the output file with run details.
-- **Parameters**: `outputFilePath` (string) - Path to the output file.
-- **Usage**: This step is used to set up the output file before executing other steps.
+- **Description**: (Optional) Re-initializes the workflow output file.
+- **Parameters**: None.
+- **Usage**: In most cases you do not need this step: the output file is initialized automatically at the start of each workflow run. The output destination comes from the top-level `OutputFilePath` setting (CLI mode) or an internal temporary file (API mode).
 
 ### Connect
 - **Description**: Establishes a connection to the terminal.
@@ -36,10 +36,12 @@ Legacy `Delay` and `HumanDelay` settings are no longer used.
   - `Coordinates` (connect3270.Coordinates) - The row and column to fill the string.
   - `Text` (string) - The text to fill at the coordinates.
 - **Usage**: This step is used to input text at a specific position on the terminal.
+  
+  If `Coordinates` is omitted (or `Row`/`Column` are both `0`), the text is typed at the current cursor position.
 
 ### AsciiScreenGrab
 - **Description**: Captures and appends the ASCII representation of the current screen to the output file.
-- **Parameters**: `outputFilePath` (string) - Path to the output file.
+- **Parameters**: None.
 - **Usage**: To capture the current state of the terminal screen as ASCII text.
 
 ### WaitForField
@@ -56,6 +58,14 @@ Legacy `Delay` and `HumanDelay` settings are no longer used.
 - **Description**: Simulates pressing the Enter key.
 - **Usage**: Commonly used to submit data or commands entered on the terminal.
 
+### PressTab
+- **Description**: Simulates pressing the Tab key.
+- **Usage**: Useful for moving focus/cursor between fields on some host screens.
+
+### PressPF1 ... PressPF24
+- **Description**: Simulates pressing a Program Function key (PF1 through PF24).
+- **Usage**: Use the PF key that matches your host application navigation.
+
 ### Disconnect
 - **Description**: Disconnects from the terminal.
 - **Usage**: This step is used to end the terminal session cleanly.
@@ -64,14 +74,12 @@ Legacy `Delay` and `HumanDelay` settings are no longer used.
 
 Here is an example of how these steps might be sequenced in a typical workflow:
 
-1. **InitializeOutput**: Set up the output file.
-2. **Connect**: Connect to the terminal.
-3. **FillString**: Input a username at the specified coordinates.
-4. **PressEnter**: Submit the username.
-5. **FillString**: Input a password at the specified coordinates.
-6. **PressEnter**: Submit the password.
-7. **CheckValue**: Verify successful login by checking for a welcome message.
-8. **AsciiScreenGrab**: Capture the screen after login.
-9. **Disconnect**: Disconnect from the terminal.
+1. **Connect**: Connect to the terminal.
+2. **AsciiScreenGrab**: Capture the initial screen.
+3. **FillString**: Populate fields.
+4. **StepDelay**: Add a targeted pause (optional).
+5. **PressEnter**: Submit.
+6. **AsciiScreenGrab**: Capture the post-submit screen.
+7. **Disconnect**: Disconnect from the terminal.
 
 Each step plays a crucial role in the automated interaction with the terminal. By combining these steps, complex workflows can be executed seamlessly.

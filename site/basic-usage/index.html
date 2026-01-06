@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../logo.ico">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.0">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.618322db.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -350,7 +350,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../BUILD.md" class="md-tabs__link">
+        <a href="../BUILD/" class="md-tabs__link">
           
   
   
@@ -660,6 +660,28 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#screen-readiness-waitforfield" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Screen readiness (WaitForField)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#workflow-timeout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Workflow timeout
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#startport-flag" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -958,7 +980,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../BUILD.md" class="md-nav__link">
+      <a href="../BUILD/" class="md-nav__link">
         
   
   
@@ -986,7 +1008,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../MAKEFILE_QUICKREF.md" class="md-nav__link">
+      <a href="../MAKEFILE_QUICKREF/" class="md-nav__link">
         
   
   
@@ -1084,7 +1106,10 @@
 <li><code>-config</code>: Specifies the path to the configuration file (default is "workflow.json").</li>
 <li><code>-token</code>: Provides a one-time RSA token that replaces any <code>{{token}}</code> placeholder in workflow step text during execution.</li>
 <li><code>-showConnectionErrors</code>: By default, connection failures for the <code>Connect</code> step are informational and do not increment the failed workflow counter. Set this flag to surface connection failures as errors and include them in the failure tally.</li>
-<li><code>-verboseFailures</code>: Emit concise failure-only logs (step, script port, error) without enabling full verbose mode—useful for high-concurrency runs where you only want failure diagnostics.</li>
+<li><code>WaitForField</code> (config, default <code>true</code>): When true, every successful <code>Connect</code> waits for the terminal to unlock an input field (1s timeout, 10 retries) before moving to the next step. Set it to <code>false</code> if you want to control waiting yourself with explicit <code>WaitForField</code> steps.</li>
+<li><code>-workflowTimeout</code>: Hard timeout (seconds) per workflow. A zero value disables the per-workflow timeout.</li>
+<li><code>-verboseFailures</code>: Emit concise failure-only logs (step, script port, error) without enabling full verbose mode-useful for high-concurrency runs where you only want failure diagnostics.</li>
+<li><code>-bar</code>: Enable compact progress bars and hide the live INFO rows. (Deprecated alias: <code>-enableProgressBar</code>.)</li>
 </ul>
 <h3 id="injecting-a-runtime-rsa-token">Injecting a runtime RSA token<a class="headerlink" href="#injecting-a-runtime-rsa-token" title="Permanent link">¶</a></h3>
 <p>Workflows can reference a transient RSA token by placing <code>{{token}}</code> in any <code>Text</code> field. Supply the token when launching 3270Connect:</p>
@@ -1097,14 +1122,13 @@
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">"Host"</span><span class="p">:</span><span class="w"> </span><span class="s2">"10.27.27.62"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"Port"</span><span class="p">:</span><span class="w"> </span><span class="mi">3270</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">"Delay"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.75</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">"HTMLFilePath"</span><span class="p">:</span><span class="w"> </span><span class="s2">"output.html"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"EveryStepDelay"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"Min"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span><span class="w"> </span><span class="nt">"Max"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.3</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">"WaitForField"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="c1">// optional (default true) to wait after Connect</span>
+<span class="w">  </span><span class="nt">"OutputFilePath"</span><span class="p">:</span><span class="w"> </span><span class="s2">"output.html"</span><span class="p">,</span><span class="w"> </span><span class="c1">// optional; if omitted a temp file is used</span>
 <span class="w">  </span><span class="nt">"RampUpBatchSize"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="c1">//optional for concurrency runs</span>
 <span class="w">  </span><span class="nt">"RampUpDelay"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="c1">//optional for concurrency runs</span>
+<span class="w">  </span><span class="nt">"EndOfTaskDelay"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"Min"</span><span class="p">:</span><span class="w"> </span><span class="mi">30</span><span class="p">,</span><span class="w"> </span><span class="nt">"Max"</span><span class="p">:</span><span class="w"> </span><span class="mi">90</span><span class="w"> </span><span class="p">},</span>
 <span class="w">  </span><span class="nt">"Steps"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">    </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">"Type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"InitializeHTMLFile"</span>
-<span class="w">    </span><span class="p">},</span>
 <span class="w">    </span><span class="p">{</span>
 <span class="w">      </span><span class="nt">"Type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Connect"</span>
 <span class="w">    </span><span class="p">},</span>
@@ -1130,8 +1154,8 @@
 <span class="w">      </span><span class="nt">"Type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"AsciiScreenGrab"</span>
 <span class="w">    </span><span class="p">},</span>
 <span class="w">    </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">"Type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"HumanDelay"</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">"Delay"</span><span class="p">:</span><span class="w"> </span><span class="mf">1.5</span>
+<span class="w">      </span><span class="nt">"Type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"StepDelay"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"StepDelay"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"Min"</span><span class="p">:</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span><span class="w"> </span><span class="nt">"Max"</span><span class="p">:</span><span class="w"> </span><span class="mf">2.0</span><span class="w"> </span><span class="p">}</span>
 <span class="w">    </span><span class="p">},</span>
 <span class="w">    </span><span class="p">{</span>
 <span class="w">      </span><span class="nt">"Type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"PressEnter"</span>
@@ -1150,7 +1174,10 @@
 <span class="w">  </span><span class="p">]</span>
 <span class="p">}</span>
 </code></pre></div>
-<p>In this example, a short global <code>Delay</code> keeps the steps paced, the <code>HumanDelay</code> step adds a longer pause before pressing Enter, and the workflow connects to a host, captures the screen, fills both fields, presses Enter, captures the screen again, and then disconnects.</p>
+<p>In this example, an <code>EveryStepDelay</code> range keeps the steps paced, the <code>StepDelay</code> step adds a longer pause before pressing Enter, and an <code>EndOfTaskDelay</code> holds the virtual user after completion to mirror real think-time. The workflow connects to a host, captures the screen, fills both fields, presses Enter, captures the screen again, and then disconnects. By default, <code>WaitForField</code> will wait after <code>Connect</code> before the next step. If you disable the global setting (<code>"WaitForField": false</code>), you can still add an explicit step where you need it:</p>
+<div class="highlight"><pre><span></span><code><span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="nt">"Type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"WaitForField"</span><span class="p">,</span><span class="w"> </span><span class="nt">"Delay"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p>Place it after <code>Connect</code> or after navigation steps (e.g., <code>PressEnter</code>) when the host is slow to render the next screen.</p>
 <h3 id="concurrent-workflows">Concurrent Workflows<a class="headerlink" href="#concurrent-workflows" title="Permanent link">¶</a></h3>
 <p>You can run multiple workflows concurrently by specifying the <code>-concurrent</code> and <code>-runtime</code> flags:</p>
 <ul>
@@ -1173,6 +1200,15 @@
 <p>To log only failing steps (without the volume of full verbose output), use the <code>-verboseFailures</code> flag. This is helpful when running many concurrent workflows and you just want to capture which steps failed.</p>
 <div class="highlight"><pre><span></span><code>3270Connect<span class="w"> </span>-config<span class="w"> </span>workflow.json<span class="w"> </span>-verboseFailures
 </code></pre></div>
+<h3 id="screen-readiness-waitforfield">Screen readiness (WaitForField)<a class="headerlink" href="#screen-readiness-waitforfield" title="Permanent link">¶</a></h3>
+<ul>
+<li>Global: <code>WaitForField</code> in the top-level config (default <code>true</code>) waits after every <code>Connect</code> until the terminal unlocks an input field. Set it to <code>false</code> to opt out globally.</li>
+<li>Per-step: Add a <code>WaitForField</code> step wherever you need an extra wait (e.g., after <code>PressEnter</code>). Use <code>Delay</code> to override the default 1-second timeout.</li>
+</ul>
+<h3 id="workflow-timeout">Workflow timeout<a class="headerlink" href="#workflow-timeout" title="Permanent link">¶</a></h3>
+<ul>
+<li><code>-workflowTimeout</code>: Hard timeout (seconds) applied to each workflow run. Default 120; set to <code>0</code> to disable. When the timeout is hit, the workflow stops without counting as a connect failure.</li>
+</ul>
 <h3 id="startport-flag">startPort Flag<a class="headerlink" href="#startport-flag" title="Permanent link">¶</a></h3>
 <p>The -startPort flag allows you to specify the starting port for the sample application. This help to prevent port usage conflicts when running 3270Connect multiple times on the same machine.</p>
 <p>Use it as follows:</p>
@@ -1407,10 +1443,10 @@ or
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.instant.progress", "navigation.expand", "navigation.sections", "navigation.tabs", "navigation.top", "navigation.footer", "header.autohide", "search.suggest", "search.highlight", "content.code.copy", "content.action.edit", "content.action.view", "toc.integrate", "content.tabs.link", "content.footnotes"], "search": "../assets/javascripts/workers/search.7a47a382.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": 1.6}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.instant.progress", "navigation.expand", "navigation.sections", "navigation.tabs", "navigation.top", "navigation.footer", "header.autohide", "search.suggest", "search.highlight", "content.code.copy", "content.action.edit", "content.action.view", "toc.integrate", "content.tabs.link", "content.footnotes"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": 1.6}</script>
     
     
-      <script src="../assets/javascripts/bundle.e71a0d61.min.js"></script>
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>
