@@ -11,7 +11,10 @@ func TestRandomDurationWithinRange(t *testing.T) {
 	oldRng := delayRNG
 	delayRNG = rand.New(rand.NewSource(1))
 	defer func() { delayRNG = oldRng }()
-	delay := randomDuration(DelayRange{Min: 0.1, Max: 0.3})
+	delay, err := randomDuration(DelayRange{Min: 0.1, Max: 0.3}, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if delay < 100*time.Millisecond || delay > 300*time.Millisecond {
 		t.Fatalf("expected delay between 100ms and 300ms, got %v", delay)
 	}
@@ -22,7 +25,10 @@ func TestRandomDurationDefaultsMaxToMin(t *testing.T) {
 	delayRNG = rand.New(rand.NewSource(2))
 	defer func() { delayRNG = oldRng }()
 	expected := 1500 * time.Millisecond
-	delay := randomDuration(DelayRange{Min: 1.5})
+	delay, err := randomDuration(DelayRange{Min: 1.5}, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if delay != expected {
 		t.Fatalf("expected delay %v, got %v", expected, delay)
 	}

@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	crand "crypto/rand"
 	"embed"
+	"encoding/binary"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -131,9 +133,14 @@ var workflowDurations []float64
 var workflowDurationSum float64
 var (
 	delayRNGMu           sync.Mutex // protects delayRNG for concurrent workflow runs
-	delayRNG             = rand.New(rand.NewSource(time.Now().UnixNano()))
+	delayRNGOnce         sync.Once
+	delayRNG             *rand.Rand
 	negativeDelayLogOnce sync.Once
 )
+
+func init() {
+	delayRNG = newDelayRNG()
+}
 
 var workflowDurationCount int64
 
@@ -681,7 +688,11 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration, ove
 			break
 		}
 		if idx > 0 {
-			if delay := randomDuration(config.EveryStepDelay); delay > 0 {
+			delay, err := randomDuration(config.EveryStepDelay, true)
+			if err != nil {
+				addError(err)
+			}
+			if delay > 0 {
 				time.Sleep(delay)
 			}
 		}
@@ -715,7 +726,11 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration, ove
 	}
 
 	if !workflowFailed && !connectFailed && !connect3270.ShutdownRequested() {
-		if delay := randomDuration(config.EndOfTaskDelay); delay > 0 {
+		delay, err := randomDuration(config.EndOfTaskDelay, true)
+		if err != nil {
+			addError(err)
+		}
+		if delay > 0 {
 			time.Sleep(delay)
 		}
 	}
@@ -742,6 +757,14 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration, ove
 	return nil
 }
 
+func newDelayRNG() *rand.Rand {
+	seedBytes := make([]byte, 8)
+	if _, err := crand.Read(seedBytes); err == nil {
+		return rand.New(rand.NewSource(int64(binary.LittleEndian.Uint64(seedBytes))))
+	}
+	return rand.New(rand.NewSource(time.Now().UnixNano()))
+}
+
 func secondsToDuration(seconds float64) time.Duration {
 	if seconds <= 0 {
 		return 0
@@ -749,37 +772,46 @@ func secondsToDuration(seconds float64) time.Duration {
 	return time.Duration(seconds * float64(time.Second))
 }
 
-func randomDuration(rangeConfig DelayRange) time.Duration {
+func randomDuration(rangeConfig DelayRange, allowZero bool) (time.Duration, error) {
 	if rangeConfig.Min < 0 || rangeConfig.Max < 0 {
+		err := fmt.Errorf("DelayRange contains negative values; ignoring delay configuration")
 		negativeDelayLogOnce.Do(func() {
-			msg := "DelayRange contains negative values; ignoring delay configuration"
 			if connect3270.Verbose {
-				pterm.Warning.Println(msg)
+				pterm.Warning.Println(err.Error())
 			}
-			storeLog(msg)
+			storeLog(err.Error())
+			addError(err)
 		})
-		return 0
+		return 0, err
 	}
 	min := rangeConfig.Min
 	max := rangeConfig.Max
 	if min == 0 && max == 0 {
-		return 0
+		if allowZero {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("DelayRange requires a positive Min or Max value")
 	}
 	// If only Min is provided, treat it as a fixed delay.
 	if max == 0 {
 		max = min
 	}
 	if max < min {
-		return 0
+		return 0, fmt.Errorf("DelayRange Max cannot be less than Min")
 	}
 	delaySeconds := min
 	if max > min {
+		delayRNGOnce.Do(func() {
+			if delayRNG == nil {
+				delayRNG = newDelayRNG()
+			}
+		})
 		delayRNGMu.Lock()
 		randomPortion := delayRNG.Float64()
 		delayRNGMu.Unlock()
 		delaySeconds += randomPortion * (max - min)
 	}
-	return time.Duration(delaySeconds * float64(time.Second))
+	return time.Duration(delaySeconds * float64(time.Second)), nil
 }
 
 func runAPIWorkflow() {
@@ -821,7 +853,13 @@ func runAPIWorkflow() {
 		}
 		for idx, step := range workflowConfig.Steps {
 			if idx > 0 {
-				if delay := randomDuration(workflowConfig.EveryStepDelay); delay > 0 {
+				delay, err := randomDuration(workflowConfig.EveryStepDelay, true)
+				if err != nil {
+					sendErrorResponse(c, http.StatusBadRequest, "Invalid delay configuration", err)
+					e.Disconnect()
+					return
+				}
+				if delay > 0 {
 					time.Sleep(delay)
 				}
 			}
@@ -831,7 +869,9 @@ func runAPIWorkflow() {
 				return
 			}
 		}
-		if delay := randomDuration(workflowConfig.EndOfTaskDelay); delay > 0 {
+		if delay, err := randomDuration(workflowConfig.EndOfTaskDelay, true); err != nil {
+			sendErrorResponse(c, http.StatusBadRequest, "Invalid end-of-task delay", err)
+		} else if delay > 0 {
 			time.Sleep(delay)
 		}
 		outputContents, err := e.ReadOutputFile(tmpFileName)
@@ -950,7 +990,10 @@ func executeStep(e *connect3270.Emulator, step Step, tmpFileName string, token s
 	case "PressPF24":
 		return e.Press(connect3270.F24)
 	case "StepDelay":
-		stepDelay := randomDuration(step.StepDelay)
+		stepDelay, err := randomDuration(step.StepDelay, false)
+		if err != nil {
+			return err
+		}
 		if stepDelay <= 0 {
 			return fmt.Errorf("StepDelay requires a positive Min or Max value")
 		}
