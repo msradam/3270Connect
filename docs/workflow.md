@@ -4,7 +4,13 @@ This page provides an overview of the various workflow steps available in the 32
 
 ## Delay Behavior
 
-You can control pacing with a top-level `Delay` value (seconds, just like `RampUpDelay`). When set, 3270Connect pauses for that many seconds between every step in the workflow. Pair this with the new `HumanDelay` step type when you need targeted pauses between specific actions.
+You can control pacing with flexible delay ranges:
+
+- **EveryStepDelay** (workflow-level): Adds a randomized pause between every step using `Min`/`Max` values (sub-second friendly) to mimic keystrokes and host reaction time.
+- **StepDelay** (step-level): Insert this step when you need a targeted hesitation using a `StepDelay` object with `Min`/`Max` values (typically seconds).
+- **EndOfTaskDelay** (workflow-level): Adds a randomized pause after the final step to model user think-time between repeats (minutes-scale ranges are common).
+
+Legacy `Delay` and `HumanDelay` settings are no longer used.
 
 ## Available Workflow Steps
 
@@ -41,10 +47,10 @@ You can control pacing with a top-level `Delay` value (seconds, just like `RampU
 - **Parameters**: Optional `Delay` (float, seconds) to override the default 1 second timeout used per retry.
 - **Usage**: Insert after `Connect` or after navigation steps (e.g., `PressEnter`) when the host is slow to render screens. This is also applied automatically after `Connect` when the top-level `WaitForField` setting is `true` (default).
 
-### HumanDelay
-- **Description**: Inserts a custom pause to mimic human timing between automated interactions.
-- **Parameters**: `Delay` (float) - Number of seconds to wait before the workflow proceeds.
-- **Usage**: Use when a step needs extra time to settle (e.g., waiting for a slow screen refresh) without adding keystrokes.
+### StepDelay
+- **Description**: Inserts a randomized pause to mimic human timing between automated interactions.
+- **Parameters**: `StepDelay.Min` and `StepDelay.Max` (float, seconds) - Bounds for the pause duration.
+- **Usage**: Add just before actions that benefit from a brief hesitation (for example, immediately before `PressEnter`).
 
 ### PressEnter
 - **Description**: Simulates pressing the Enter key.

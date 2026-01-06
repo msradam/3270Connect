@@ -38,12 +38,13 @@ To run a single workflow, create a JSON configuration file that describes the wo
 {
   "Host": "10.27.27.62",
   "Port": 3270,
-  "Delay": 0.75,
+  "EveryStepDelay": { "Min": 0.1, "Max": 0.3 },
   "WaitForField": true, // optional (default true) to wait after Connect
   "WorkflowTimeout": 120, // optional per-workflow timeout in seconds (0 to disable)
   "HTMLFilePath": "output.html",
   "RampUpBatchSize": 10, //optional for concurrency runs
   "RampUpDelay": 1, //optional for concurrency runs
+  "EndOfTaskDelay": { "Min": 30, "Max": 90 },
   "Steps": [
     {
       "Type": "InitializeHTMLFile"
@@ -73,8 +74,8 @@ To run a single workflow, create a JSON configuration file that describes the wo
       "Type": "AsciiScreenGrab"
     },
     {
-      "Type": "HumanDelay",
-      "Delay": 1.5
+      "Type": "StepDelay",
+      "StepDelay": { "Min": 1.0, "Max": 2.0 }
     },
     {
       "Type": "PressEnter"
@@ -94,7 +95,7 @@ To run a single workflow, create a JSON configuration file that describes the wo
 }
 ```
 
-In this example, a short global `Delay` keeps the steps paced, the `HumanDelay` step adds a longer pause before pressing Enter, and the workflow connects to a host, captures the screen, fills both fields, presses Enter, captures the screen again, and then disconnects. By default, `WaitForField` will wait after `Connect` before the next step. If you disable the global setting (`"WaitForField": false`), you can still add an explicit step where you need it:
+In this example, an `EveryStepDelay` range keeps the steps paced, the `StepDelay` step adds a longer pause before pressing Enter, and an `EndOfTaskDelay` holds the virtual user after completion to mirror real think-time. The workflow connects to a host, captures the screen, fills both fields, presses Enter, captures the screen again, and then disconnects. By default, `WaitForField` will wait after `Connect` before the next step. If you disable the global setting (`"WaitForField": false`), you can still add an explicit step where you need it:
 
 ```json
     { "Type": "WaitForField", "Delay": 2 }

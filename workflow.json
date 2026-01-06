@@ -1,10 +1,11 @@
 {
   "Host": "127.0.0.1",
   "Port": 3270,
-  "Delay": 0.75,
+  "EveryStepDelay": { "Min": 0.1, "Max": 0.3 },
   "OutputFilePath": "output.html",
   "RampUpBatchSize": 50,
   "RampUpDelay": 1.5,
+  "EndOfTaskDelay": { "Min": 60, "Max": 120 },
   "Steps": [
     {
       "Type": "Connect"
@@ -31,8 +32,8 @@
       "Type": "AsciiScreenGrab"
     },
     {
-      "Type": "HumanDelay",
-      "Delay": 1.5
+      "Type": "StepDelay",
+      "StepDelay": { "Min": 1.0, "Max": 2.0 }
     },
     {
       "Type": "PressEnter"

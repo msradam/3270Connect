@@ -2,14 +2,16 @@ package main
 
 import (
 	"bytes"
+	crand "crypto/rand"
 	"embed"
+	"encoding/binary"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"html/template"
 	"io"
 	"io/fs"
-	"io/ioutil"
+	"math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -48,6 +50,14 @@ const (
 var errorList []error
 var errorMutex sync.Mutex
 
+// DelayRange represents a randomized delay window in seconds. When Max is
+// omitted (zero) but Min is set, Max defaults to Min. Set both Min and Max to
+// zero to disable the delay entirely.
+type DelayRange struct {
+	Min float64 `json:"Min,omitempty"`
+	Max float64 `json:"Max,omitempty"`
+}
+
 // Configuration holds the settings for the terminal connection and the steps to be executed.
 type Configuration struct {
 	Host            string
@@ -55,11 +65,13 @@ type Configuration struct {
 	OutputFilePath  string `json:"OutputFilePath"`
 	WaitForField    bool   `json:"WaitForField,omitempty"`
 	Steps           []Step
-	Delay           float64 `json:"Delay,omitempty"`
-	Token           string  `json:"Token,omitempty"`
-	InputFilePath   string  `json:"InputFilePath"`
-	RampUpBatchSize int     `json:"RampUpBatchSize"`
-	RampUpDelay     float64 `json:"RampUpDelay"`
+	EveryStepDelay  DelayRange `json:"EveryStepDelay,omitempty"`
+	EndOfTaskDelay  DelayRange `json:"EndOfTaskDelay,omitempty"`
+	Token           string     `json:"Token,omitempty"`
+	InputFilePath   string     `json:"InputFilePath"`
+	RampUpBatchSize int        `json:"RampUpBatchSize"`
+	RampUpDelay     float64    `json:"RampUpDelay"`
+	LegacyDelay     float64    `json:"Delay,omitempty"`
 }
 
 // Step represents an individual action to be taken on the terminal.
@@ -67,7 +79,8 @@ type Step struct {
 	Type        string
 	Coordinates connect3270.Coordinates
 	Text        string
-	Delay       float64 `json:"Delay,omitempty"`
+	Delay       float64    `json:"Delay,omitempty"`
+	StepDelay   DelayRange `json:"StepDelay,omitempty"`
 }
 
 func resolveTokenPlaceholder(original, token string) string {
@@ -118,6 +131,17 @@ var mutex sync.Mutex
 var timingsMutex sync.Mutex
 var workflowDurations []float64
 var workflowDurationSum float64
+var (
+	delayRNGMu           sync.Mutex // protects delayRNG for concurrent workflow runs
+	delayRNGOnce         sync.Once
+	delayRNG             *rand.Rand
+	negativeDelayLogOnce sync.Once
+)
+
+func init() {
+	delayRNG = newDelayRNG()
+}
+
 var workflowDurationCount int64
 
 var metricsMutex sync.Mutex
@@ -409,7 +433,7 @@ func loadInputFile(filePath string) ([]Step, error) {
 	if connect3270.Verbose {
 		pterm.Info.Printf("Loading input file: %s\n", filePath)
 	}
-	data, err := ioutil.ReadFile(filePath)
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		spinner.Fail("Input file read failed - disk gremlins:", err)
 		return nil, fmt.Errorf("error reading input file: %v", err)
@@ -622,7 +646,7 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration, ove
 	tmpFileName := config.OutputFilePath
 	cleanupTempFile := false
 	if tmpFileName == "" {
-		tmpFile, err := ioutil.TempFile("", "workflowOutput_")
+		tmpFile, err := os.CreateTemp("", "workflowOutput_")
 		if err != nil {
 			return handleError(err, fmt.Sprintf("Temp file creation failed - disk’s playing hide and seek: %v", err))
 		}
@@ -651,7 +675,6 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration, ove
 		steps = config.Steps
 	}
 
-	stepDelay := secondsToDuration(config.Delay)
 	for idx, step := range steps {
 		if workflowFailed {
 			break
@@ -664,8 +687,14 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration, ove
 		if connect3270.ShutdownRequested() {
 			break
 		}
-		if idx > 0 && stepDelay > 0 {
-			time.Sleep(stepDelay)
+		if idx > 0 {
+			delay, err := randomDuration(config.EveryStepDelay, true)
+			if err != nil {
+				addError(err)
+			}
+			if delay > 0 {
+				time.Sleep(delay)
+			}
 		}
 		err := executeStep(e, step, tmpFileName, config.Token)
 		if err == nil && step.Type == "Connect" && config.WaitForField {
@@ -696,6 +725,16 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration, ove
 		}
 	}
 
+	if !workflowFailed && !connectFailed && !connect3270.ShutdownRequested() {
+		delay, err := randomDuration(config.EndOfTaskDelay, true)
+		if err != nil {
+			addError(err)
+		}
+		if delay > 0 {
+			time.Sleep(delay)
+		}
+	}
+
 	duration := time.Since(startTime).Seconds()
 	recordWorkflowDuration(duration)
 
@@ -718,11 +757,61 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration, ove
 	return nil
 }
 
+func newDelayRNG() *rand.Rand {
+	seedBytes := make([]byte, 8)
+	if _, err := crand.Read(seedBytes); err == nil {
+		return rand.New(rand.NewSource(int64(binary.LittleEndian.Uint64(seedBytes))))
+	}
+	return rand.New(rand.NewSource(time.Now().UnixNano()))
+}
+
 func secondsToDuration(seconds float64) time.Duration {
 	if seconds <= 0 {
 		return 0
 	}
 	return time.Duration(seconds * float64(time.Second))
+}
+
+func randomDuration(rangeConfig DelayRange, allowZero bool) (time.Duration, error) {
+	if rangeConfig.Min < 0 || rangeConfig.Max < 0 {
+		err := fmt.Errorf("DelayRange contains negative values; ignoring delay configuration")
+		negativeDelayLogOnce.Do(func() {
+			if connect3270.Verbose {
+				pterm.Warning.Println(err.Error())
+			}
+			storeLog(err.Error())
+			addError(err)
+		})
+		return 0, err
+	}
+	min := rangeConfig.Min
+	max := rangeConfig.Max
+	if min == 0 && max == 0 {
+		if allowZero {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("DelayRange requires a positive Min or Max value")
+	}
+	// If only Min is provided, treat it as a fixed delay.
+	if max == 0 {
+		max = min
+	}
+	if max < min {
+		return 0, fmt.Errorf("DelayRange Max cannot be less than Min")
+	}
+	delaySeconds := min
+	if max > min {
+		delayRNGOnce.Do(func() {
+			if delayRNG == nil {
+				delayRNG = newDelayRNG()
+			}
+		})
+		delayRNGMu.Lock()
+		randomPortion := delayRNG.Float64()
+		delayRNGMu.Unlock()
+		delaySeconds += randomPortion * (max - min)
+	}
+	return time.Duration(delaySeconds * float64(time.Second)), nil
 }
 
 func runAPIWorkflow() {
@@ -742,7 +831,11 @@ func runAPIWorkflow() {
 		if workflowConfig.Token == "" && rsaToken != "" {
 			workflowConfig.Token = rsaToken
 		}
-		tmpFile, err := ioutil.TempFile("", "workflowOutput_")
+		if err := validateConfiguration(&workflowConfig); err != nil {
+			sendErrorResponse(c, http.StatusBadRequest, "Invalid workflow configuration", err)
+			return
+		}
+		tmpFile, err := os.CreateTemp("", "workflowOutput_")
 		if err != nil {
 			pterm.Error.Println("Temp file creation failed - disk’s napping:", err)
 			sendErrorResponse(c, http.StatusInternalServerError, "Failed to create temp file", err)
@@ -758,16 +851,28 @@ func runAPIWorkflow() {
 			sendErrorResponse(c, http.StatusInternalServerError, "Output init failed - setup’s cursed", err)
 			return
 		}
-		stepDelay := secondsToDuration(workflowConfig.Delay)
 		for idx, step := range workflowConfig.Steps {
-			if idx > 0 && stepDelay > 0 {
-				time.Sleep(stepDelay)
+			if idx > 0 {
+				delay, err := randomDuration(workflowConfig.EveryStepDelay, true)
+				if err != nil {
+					sendErrorResponse(c, http.StatusBadRequest, "Invalid delay configuration", err)
+					e.Disconnect()
+					return
+				}
+				if delay > 0 {
+					time.Sleep(delay)
+				}
 			}
 			if err := executeStep(e, step, tmpFileName, workflowConfig.Token); err != nil {
 				sendErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Step '%s' failed - oof", step.Type), err)
 				e.Disconnect()
 				return
 			}
+		}
+		if delay, err := randomDuration(workflowConfig.EndOfTaskDelay, true); err != nil {
+			sendErrorResponse(c, http.StatusBadRequest, "Invalid end-of-task delay", err)
+		} else if delay > 0 {
+			time.Sleep(delay)
 		}
 		outputContents, err := e.ReadOutputFile(tmpFileName)
 		if err != nil {
@@ -884,12 +989,15 @@ func executeStep(e *connect3270.Emulator, step Step, tmpFileName string, token s
 		return e.Press(connect3270.F23)
 	case "PressPF24":
 		return e.Press(connect3270.F24)
-	case "HumanDelay":
-		humanDelay := secondsToDuration(step.Delay)
-		if humanDelay <= 0 {
-			return fmt.Errorf("HumanDelay requires a positive Delay value")
+	case "StepDelay":
+		stepDelay, err := randomDuration(step.StepDelay, false)
+		if err != nil {
+			return err
 		}
-		time.Sleep(humanDelay)
+		if stepDelay <= 0 {
+			return fmt.Errorf("StepDelay requires a positive Min or Max value")
+		}
+		time.Sleep(stepDelay)
 		return nil
 	default:
 		return fmt.Errorf("unknown step type: %s", step.Type)
@@ -1608,6 +1716,19 @@ func max(a, b int) int {
 	return b
 }
 
+func validateDelayRange(name string, dr DelayRange, allowZero bool) error {
+	if dr.Min < 0 || dr.Max < 0 {
+		return fmt.Errorf("%s must be zero or positive", name)
+	}
+	if dr.Max > 0 && dr.Min > dr.Max {
+		return fmt.Errorf("%s Min cannot be greater than Max", name)
+	}
+	if !allowZero && dr.Min == 0 && dr.Max == 0 {
+		return fmt.Errorf("%s requires a positive Min or Max value", name)
+	}
+	return nil
+}
+
 func validateConfiguration(config *Configuration) error {
 	if connect3270.Verbose {
 		pterm.Info.Println("Validating config - let’s see if it’s naughty or nice!")
@@ -1618,8 +1739,14 @@ func validateConfiguration(config *Configuration) error {
 	if config.Port <= 0 {
 		return fmt.Errorf("port is invalid - ports cant be negative silly")
 	}
-	if config.Delay < 0 {
-		return fmt.Errorf("Delay must be zero or positive")
+	if config.LegacyDelay > 0 {
+		return fmt.Errorf("Delay is no longer supported; use EveryStepDelay.Min/Max instead")
+	}
+	if err := validateDelayRange("EveryStepDelay", config.EveryStepDelay, true); err != nil {
+		return err
+	}
+	if err := validateDelayRange("EndOfTaskDelay", config.EndOfTaskDelay, true); err != nil {
+		return err
 	}
 	if config.OutputFilePath == "" {
 		hasScreenGrab := false
@@ -1635,6 +1762,9 @@ func validateConfiguration(config *Configuration) error {
 	}
 
 	for _, step := range config.Steps {
+		if step.Type == "HumanDelay" {
+			return fmt.Errorf("HumanDelay is no longer supported; use StepDelay with Min/Max instead")
+		}
 		// Allow steps that do not require additional configuration.
 		if step.Type == "Connect" ||
 			step.Type == "AsciiScreenGrab" ||
@@ -1642,11 +1772,11 @@ func validateConfiguration(config *Configuration) error {
 			step.Type == "PressTab" ||
 			step.Type == "WaitForField" ||
 			step.Type == "Disconnect" ||
-			step.Type == "HumanDelay" ||
+			step.Type == "StepDelay" ||
 			(strings.HasPrefix(step.Type, "PressPF")) {
-			if step.Type == "HumanDelay" {
-				if step.Delay <= 0 {
-					return fmt.Errorf("HumanDelay step needs a positive Delay value")
+			if step.Type == "StepDelay" {
+				if err := validateDelayRange("StepDelay", step.StepDelay, false); err != nil {
+					return err
 				}
 			}
 			continue
@@ -1955,7 +2085,7 @@ func readDashboardMetrics(baseDir string) ([]Metrics, []ExtendedMetrics) {
 			continue
 		}
 
-		data, err := ioutil.ReadFile(f)
+		data, err := os.ReadFile(f)
 		if err != nil {
 			if os.IsNotExist(err) {
 				continue
@@ -2068,7 +2198,7 @@ func updateMetricsFile() {
 	dashboardDir := dashboardMetricsDir()
 	os.MkdirAll(dashboardDir, 0755)
 	filePath := filepath.Join(dashboardDir, fmt.Sprintf("metrics_%d.json", pid))
-	if err := ioutil.WriteFile(filePath, data, 0644); err != nil {
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
 		pterm.Warning.Printf("Metrics file write failed for pid %d - disk’s grumpy: %v\n", pid, err)
 	}
 	maybeCleanupDashboardArtifacts()
@@ -2099,7 +2229,7 @@ func aggregateMetrics() Metrics {
 			continue
 		}
 
-		data, err := ioutil.ReadFile(f)
+		data, err := os.ReadFile(f)
 		if err != nil {
 			// File may have been deleted between Stat and ReadFile, silently continue
 			if os.IsNotExist(err) {
@@ -2786,7 +2916,7 @@ func updateKilledStatus(pid int) {
 	//pterm.Info.Printf("Reading metrics file: %s\n", metricsFile)
 	storeLog(fmt.Sprintf("Reading metrics file: %s", metricsFile))
 
-	data, err := ioutil.ReadFile(metricsFile)
+	data, err := os.ReadFile(metricsFile)
 	if err != nil {
 		pterm.Warning.Printf("Failed to read metrics file for PID %d: %v\n", pid, err)
 		storeLog(fmt.Sprintf("Failed to read metrics file for PID %d: %v", pid, err))
@@ -2813,7 +2943,7 @@ func updateKilledStatus(pid int) {
 		storeLog(fmt.Sprintf("Failed to marshal updated metrics for PID %d: %v", pid, err))
 		return
 	}
-	if err := ioutil.WriteFile(metricsFile, updatedData, 0644); err != nil {
+	if err := os.WriteFile(metricsFile, updatedData, 0644); err != nil {
 		pterm.Warning.Printf("Failed to write updated metrics for PID %d: %v\n", pid, err)
 		storeLog(fmt.Sprintf("Failed to write updated metrics for PID %d: %v", pid, err))
 		return
