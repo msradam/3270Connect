@@ -83,15 +83,7 @@ type Step struct {
 	StepDelay   DelayRange `json:"StepDelay,omitempty"`
 }
 
-type workflowMetadata struct {
-	Host            string     `json:"Host"`
-	Port            int        `json:"Port"`
-	EveryStepDelay  DelayRange `json:"EveryStepDelay"`
-	OutputFilePath  string     `json:"OutputFilePath"`
-	RampUpBatchSize int        `json:"RampUpBatchSize"`
-	RampUpDelay     float64    `json:"RampUpDelay"`
-	EndOfTaskDelay  DelayRange `json:"EndOfTaskDelay"`
-}
+var configPrinter *MessagePrinter
 
 func runtimeEnvironmentString() string {
 	args := strings.Join(os.Args[1:], " ")
@@ -101,34 +93,102 @@ func runtimeEnvironmentString() string {
 	return getExecutablePath() + " " + args
 }
 
-func workflowMetadataJSON(config *Configuration) string {
-	if config == nil {
-		return "{}"
+func cliArgsString() string {
+	args := strings.TrimSpace(strings.Join(os.Args[1:], " "))
+	if args == "" {
+		return "(none)"
 	}
-	meta := workflowMetadata{
-		Host:            config.Host,
-		Port:            config.Port,
-		EveryStepDelay:  config.EveryStepDelay,
-		OutputFilePath:  config.OutputFilePath,
-		RampUpBatchSize: config.RampUpBatchSize,
-		RampUpDelay:     config.RampUpDelay,
-		EndOfTaskDelay:  config.EndOfTaskDelay,
+	return args
+}
+
+func formatSeconds(seconds float64) string {
+	if seconds == 0 {
+		return "0s"
 	}
-	b, err := json.MarshalIndent(meta, "", "  ")
-	if err != nil {
-		return fmt.Sprintf("{\n  \"error\": %q\n}", err.Error())
+	if seconds == float64(int64(seconds)) {
+		return fmt.Sprintf("%ds", int64(seconds))
 	}
-	return string(b)
+	// Keep it compact but readable.
+	return fmt.Sprintf("%.2fs", seconds)
+}
+
+func formatDelayRange(r DelayRange) string {
+	min := r.Min
+	max := r.Max
+	if min == 0 && max == 0 {
+		return "disabled"
+	}
+	if max == 0 {
+		max = min
+	}
+	if min == max {
+		return formatSeconds(min)
+	}
+	return fmt.Sprintf("%s - %s", formatSeconds(min), formatSeconds(max))
+}
+
+func workflowMetadataText(configPath string, config *Configuration) string {
+	label := strings.TrimSpace(configPath)
+	if label == "" {
+		label = "(none)"
+	}
+
+	outputPath := strings.TrimSpace(config.OutputFilePath)
+	if outputPath == "" {
+		outputPath = "(auto temp file)"
+	}
+
+	return strings.Join([]string{
+		//fmt.Sprintf("Config file: %s", label),
+		fmt.Sprintf("CLI args: %s", cliArgsString()),
+		fmt.Sprintf("Host: %s", config.Host),
+		fmt.Sprintf("Port: %d", config.Port),
+		fmt.Sprintf("EveryStepDelay: %s", formatDelayRange(config.EveryStepDelay)),
+		fmt.Sprintf("OutputFilePath: %s", outputPath),
+		fmt.Sprintf("RampUpBatchSize: %d", config.RampUpBatchSize),
+		fmt.Sprintf("RampUpDelay: %s", formatSeconds(config.RampUpDelay)),
+		fmt.Sprintf("EndOfTaskDelay: %s", formatDelayRange(config.EndOfTaskDelay)),
+	}, "\n")
 }
 
 func printWorkflowMetadata(configPath string, config *Configuration) {
-	label := configPath
-	if strings.TrimSpace(label) == "" {
+	if configPrinter == nil {
+		// Fallback: should never happen because init() wires it.
+		//pterm.Info.Println("Workflow Configuration")
+		pterm.Println(workflowMetadataText(configPath, config))
+		pterm.Println()
+		return
+	}
+	//configPrinter.Println("Workflow Configuration")
+
+	// Print the summary lines with light highlighting on values.
+	label := strings.TrimSpace(configPath)
+	if label == "" {
 		label = "(none)"
 	}
-	pterm.DefaultSection.WithStyle(pterm.NewStyle(pterm.FgCyan)).Println("Workflow Configuration")
-	pterm.Info.Println("Config file: " + pterm.LightGreen(label))
-	pterm.Println(pterm.LightYellow(workflowMetadataJSON(config)))
+
+	outputPath := strings.TrimSpace("")
+	if config != nil {
+		outputPath = strings.TrimSpace(config.OutputFilePath)
+	}
+	if outputPath == "" {
+		outputPath = "(auto temp file)"
+	}
+
+	//configPrinter.Printf("Config file: %s\n", pterm.LightGreen(label))
+	configPrinter.Printf("CLI args: %s", pterm.White(cliArgsString()))
+	if config == nil {
+		configPrinter.Println("(no workflow configuration loaded)")
+		pterm.Println()
+		return
+	}
+	configPrinter.Printf("Host: %s", pterm.LightGreen(config.Host))
+	configPrinter.Printf("Port: %s", pterm.LightGreen(fmt.Sprintf("%d", config.Port)))
+	configPrinter.Printf("EveryStepDelay: %s", pterm.LightGreen(formatDelayRange(config.EveryStepDelay)))
+	configPrinter.Printf("OutputFilePath: %s", pterm.LightGreen(outputPath))
+	configPrinter.Printf("RampUpBatchSize: %s", pterm.LightGreen(fmt.Sprintf("%d", config.RampUpBatchSize)))
+	configPrinter.Printf("RampUpDelay: %s", pterm.LightGreen(formatSeconds(config.RampUpDelay)))
+	configPrinter.Printf("EndOfTaskDelay: %s", pterm.LightGreen(formatDelayRange(config.EndOfTaskDelay)))
 	pterm.Println()
 }
 
@@ -356,6 +416,11 @@ func init() {
 	pterm.Error.Prefix = Prefix{Text: "ERROR", Style: pterm.NewStyle(pterm.BgRed, pterm.FgWhite)}
 	pterm.Success.Prefix = Prefix{Text: "SUCCESS", Style: pterm.NewStyle(pterm.BgGreen, pterm.FgBlack)}
 	pterm.Warning.Prefix = Prefix{Text: "WARNING", Style: pterm.NewStyle(pterm.BgYellow, pterm.FgBlack)}
+
+	configPrinter = &MessagePrinter{
+		Prefix: Prefix{Text: "CONFIG", Style: pterm.NewStyle(Color{value: "#7c3aed", background: true}, pterm.FgWhite)},
+		style:  lipgloss.NewStyle(),
+	}
 
 	if err := os.MkdirAll("logs", 0755); err != nil {
 		pterm.Error.Println("Failed to create logs dir - universe says no:", err)
@@ -1074,13 +1139,13 @@ func printBanner() {
 	pterm.Info.Println("Version: " + pterm.LightGreen(version))
 	pterm.Info.Println("Website: " + pterm.LightGreen("https://3270.io"))
 	pterm.Info.Println("Author: " + pterm.LightGreen("EyUp.io"))
-	pterm.Info.Println("Runtime Environment: " + pterm.LightYellow(getExecutablePath()+" ") + pterm.White(strings.Join(os.Args[1:], " ")))
+	//pterm.Info.Println("Runtime Environment: " + pterm.LightYellow(getExecutablePath()+" ") + pterm.White(strings.Join(os.Args[1:], " ")))
 	pterm.Println()
 }
 
 func LaunchEmbeddedIfDoubleClicked() {
 	if !*startDashboard {
-		pterm.Warning.Println("Dashboard mode not enabled. Skipping embedded browser launch.")
+		//pterm.Warning.Println("Dashboard mode not enabled. Skipping embedded browser launch.")
 		return
 	}
 
@@ -1583,15 +1648,12 @@ func memStatus(mem float64) string {
 func generateSummaryText(configPath string, config *Configuration, finalStarted, finalCompleted, finalFailed int64, finalActive int, avgCPU, avgMem, avgWorkflowTime, elapsed float64) string {
 	var sb strings.Builder
 	sb.WriteString("All workflows wrapped up - Time for a victory lap!\n\n")
-	sb.WriteString("Runtime Environment: ")
+	//sb.WriteString("Runtime Environment: ")
 	sb.WriteString(runtimeEnvironmentString())
 	sb.WriteString("\n")
-	sb.WriteString("Workflow config file: ")
-	sb.WriteString(strings.TrimSpace(configPath))
+	sb.WriteString("Workflow Configuration: ")
+	sb.WriteString(workflowMetadataText(configPath, config))
 	sb.WriteString("\n")
-	sb.WriteString("Workflow Configuration:\n")
-	sb.WriteString(workflowMetadataJSON(config))
-	sb.WriteString("\n\n")
 	sb.WriteString("Run Summary - Performance Report\n")
 	sb.WriteString(fmt.Sprintf("Total Workflows Started: %d\n", finalStarted))
 	sb.WriteString(fmt.Sprintf("Total Workflows Completed: %d\n", finalCompleted))
@@ -1656,7 +1718,7 @@ func formatPowerupRow(ts time.Time, overallStart time.Time, runtimeDuration int,
 		pterm.FgCyan.Sprintf("%-*s", colWidthCPU, fmt.Sprintf("🧠 %.1f%%", cpuUsage)),
 		pterm.FgMagenta.Sprintf("%-*s", colWidthMem, fmt.Sprintf("💾 %.1f%%", memUsage)),
 		pterm.FgLightGreen.Sprintf("%-*s", colWidthRamp, fmt.Sprintf("⚡ +%d", addedThisBatch)),
-		pterm.FgYellow.Sprintf("%-*s", colWidthGap, fmt.Sprintf("🪫 %d", workerCount-active)),
+		//pterm.FgYellow.Sprintf("%-*s", colWidthGap, fmt.Sprintf("🪫 %d", workerCount-active)),
 	}
 	return strings.Join(parts, " | ")
 }
@@ -1688,7 +1750,6 @@ func printSingleWorkflowSummary(configPath string, config *Configuration) {
 	elapsed := int(time.Since(programStart).Seconds())
 
 	pterm.Success.Println("Workflow completed - Time for a victory lap!")
-	pterm.Info.Println("Runtime Environment: " + pterm.LightYellow(runtimeEnvironmentString()))
 	printWorkflowMetadata(configPath, config)
 
 	// Display summary report
@@ -1879,7 +1940,7 @@ func runDashboard() {
 	addr := fmt.Sprintf("localhost:%d", dashboardPort) // Bind to localhost
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		pterm.Warning.Printf("Dashboard already vibing on port %d - skipping the encore!\n", dashboardPort)
+		//pterm.Warning.Printf("Dashboard already vibing on port %d - skipping the encore!\n", dashboardPort)
 		go func() {
 			for {
 				updateMetricsFile()
