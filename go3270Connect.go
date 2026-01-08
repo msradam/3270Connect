@@ -83,6 +83,55 @@ type Step struct {
 	StepDelay   DelayRange `json:"StepDelay,omitempty"`
 }
 
+type workflowMetadata struct {
+	Host            string     `json:"Host"`
+	Port            int        `json:"Port"`
+	EveryStepDelay  DelayRange `json:"EveryStepDelay"`
+	OutputFilePath  string     `json:"OutputFilePath"`
+	RampUpBatchSize int        `json:"RampUpBatchSize"`
+	RampUpDelay     float64    `json:"RampUpDelay"`
+	EndOfTaskDelay  DelayRange `json:"EndOfTaskDelay"`
+}
+
+func runtimeEnvironmentString() string {
+	args := strings.Join(os.Args[1:], " ")
+	if args == "" {
+		return getExecutablePath()
+	}
+	return getExecutablePath() + " " + args
+}
+
+func workflowMetadataJSON(config *Configuration) string {
+	if config == nil {
+		return "{}"
+	}
+	meta := workflowMetadata{
+		Host:            config.Host,
+		Port:            config.Port,
+		EveryStepDelay:  config.EveryStepDelay,
+		OutputFilePath:  config.OutputFilePath,
+		RampUpBatchSize: config.RampUpBatchSize,
+		RampUpDelay:     config.RampUpDelay,
+		EndOfTaskDelay:  config.EndOfTaskDelay,
+	}
+	b, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return fmt.Sprintf("{\n  \"error\": %q\n}", err.Error())
+	}
+	return string(b)
+}
+
+func printWorkflowMetadata(configPath string, config *Configuration) {
+	label := configPath
+	if strings.TrimSpace(label) == "" {
+		label = "(none)"
+	}
+	pterm.DefaultSection.WithStyle(pterm.NewStyle(pterm.FgCyan)).Println("Workflow Configuration")
+	pterm.Info.Println("Config file: " + pterm.LightGreen(label))
+	pterm.Println(pterm.LightYellow(workflowMetadataJSON(config)))
+	pterm.Println()
+}
+
 func resolveTokenPlaceholder(original, token string) string {
 	if !strings.Contains(original, "{{token}}") {
 		return original
@@ -1112,15 +1161,18 @@ func main() {
 	if rsaToken != "" {
 		config.Token = rsaToken
 	}
+	if !runAPI {
+		printWorkflowMetadata(configFile, config)
+	}
 	if runAPI {
 		runAPIWorkflow()
 	} else {
 		if concurrent > 1 || runtimeDuration > 0 {
-			runConcurrentWorkflows(config, injectionConfig)
+			runConcurrentWorkflows(config, injectionConfig, configFile)
 
 		} else {
 			runWorkflow(lastUsedPort, config)
-			printSingleWorkflowSummary()
+			printSingleWorkflowSummary(configFile, config)
 		}
 		if concurrent > 1 && dashboardStarted {
 			pterm.Info.Printf("All workflows completed but the dashboard is still running on port %d. Press Ctrl+C to exit.", dashboardPort)
@@ -1185,7 +1237,7 @@ func (w *workflowWorker) start() {
 	_ = w.emulator.Disconnect()
 }
 
-func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
+func runConcurrentWorkflows(config *Configuration, injectionConfig string, configPath string) {
 	if runtimeDuration <= 0 {
 		pterm.Warning.Println("Runtime duration must be greater than zero for concurrent execution.")
 		return
@@ -1464,6 +1516,7 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 
 	clear()
 	printBanner()
+	printWorkflowMetadata(configPath, config)
 	pterm.Success.Println("All workflows wrapped up - Time for a victory lap!")
 	elapsed := int(time.Since(overallStart).Seconds())
 	pterm.Println()
@@ -1494,7 +1547,7 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string) {
 			{"Run Duration", fmt.Sprintf("%ds", elapsed), "🛎️ Completed"},
 		}).Render()
 
-	summaryText := generateSummaryText(finalStarted, finalCompleted, finalFailed, finalActive, avgCPU, avgMem, avgWorkflowTime, float64(elapsed))
+	summaryText := generateSummaryText(configPath, config, finalStarted, finalCompleted, finalFailed, finalActive, avgCPU, avgMem, avgWorkflowTime, float64(elapsed))
 	summaryFile := filepath.Join("logs", fmt.Sprintf("summary_%d.txt", os.Getpid()))
 	if err := os.WriteFile(summaryFile, []byte(summaryText), 0644); err != nil {
 		pterm.Warning.Printf("Failed to save summary: %v\n", err)
@@ -1527,9 +1580,18 @@ func memStatus(mem float64) string {
 	}
 }
 
-func generateSummaryText(finalStarted, finalCompleted, finalFailed int64, finalActive int, avgCPU, avgMem, avgWorkflowTime, elapsed float64) string {
+func generateSummaryText(configPath string, config *Configuration, finalStarted, finalCompleted, finalFailed int64, finalActive int, avgCPU, avgMem, avgWorkflowTime, elapsed float64) string {
 	var sb strings.Builder
 	sb.WriteString("All workflows wrapped up - Time for a victory lap!\n\n")
+	sb.WriteString("Runtime Environment: ")
+	sb.WriteString(runtimeEnvironmentString())
+	sb.WriteString("\n")
+	sb.WriteString("Workflow config file: ")
+	sb.WriteString(strings.TrimSpace(configPath))
+	sb.WriteString("\n")
+	sb.WriteString("Workflow Configuration:\n")
+	sb.WriteString(workflowMetadataJSON(config))
+	sb.WriteString("\n\n")
 	sb.WriteString("Run Summary - Performance Report\n")
 	sb.WriteString(fmt.Sprintf("Total Workflows Started: %d\n", finalStarted))
 	sb.WriteString(fmt.Sprintf("Total Workflows Completed: %d\n", finalCompleted))
@@ -1613,7 +1675,7 @@ func infofIfBarsDisabled(format string, args ...interface{}) {
 	pterm.Info.Printf(format, args...)
 }
 
-func printSingleWorkflowSummary() {
+func printSingleWorkflowSummary(configPath string, config *Configuration) {
 	avgCPU := getAverageCPUUsage()
 	avgMem := getAverageMemoryUsage()
 	avgWorkflowTime := getAverageWorkflowDuration()
@@ -1626,6 +1688,8 @@ func printSingleWorkflowSummary() {
 	elapsed := int(time.Since(programStart).Seconds())
 
 	pterm.Success.Println("Workflow completed - Time for a victory lap!")
+	pterm.Info.Println("Runtime Environment: " + pterm.LightYellow(runtimeEnvironmentString()))
+	printWorkflowMetadata(configPath, config)
 
 	// Display summary report
 	pterm.DefaultSection.WithStyle(pterm.NewStyle(pterm.FgCyan)).Println("Run Summary - Performance Report")
@@ -1649,7 +1713,7 @@ func printSingleWorkflowSummary() {
 		}).Render()
 
 	// Save summary to file
-	summaryText := generateSummaryText(finalStarted, finalCompleted, finalFailed, 0, avgCPU, avgMem, avgWorkflowTime, float64(elapsed))
+	summaryText := generateSummaryText(configPath, config, finalStarted, finalCompleted, finalFailed, 0, avgCPU, avgMem, avgWorkflowTime, float64(elapsed))
 	summaryFile := filepath.Join("logs", fmt.Sprintf("summary_%d.txt", os.Getpid()))
 	if err := os.WriteFile(summaryFile, []byte(summaryText), 0644); err != nil {
 		pterm.Warning.Printf("Failed to save summary: %v\n", err)
