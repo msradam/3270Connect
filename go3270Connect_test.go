@@ -51,3 +51,58 @@ func TestValidateConfigurationRejectsLegacyDelayAndHumanDelay(t *testing.T) {
 		t.Fatalf("expected HumanDelay validation error, got %v", err)
 	}
 }
+
+func TestInjectDynamicValues(t *testing.T) {
+	config := &Configuration{
+		Host: "localhost",
+		Port: 3270,
+		Steps: []Step{
+			{Type: "Connect"},
+			{Type: "FillString", Text: "{{username}}"},
+			{Type: "FillString", Text: "{{password}}"},
+			{Type: "Disconnect"},
+		},
+	}
+
+	injection := map[string]string{
+		"{{username}}": "testuser",
+		"{{password}}": "testpass",
+	}
+
+	result := injectDynamicValues(config, injection)
+
+	// Verify placeholders were replaced
+	if result.Steps[1].Text != "testuser" {
+		t.Errorf("expected username to be 'testuser', got '%s'", result.Steps[1].Text)
+	}
+	if result.Steps[2].Text != "testpass" {
+		t.Errorf("expected password to be 'testpass', got '%s'", result.Steps[2].Text)
+	}
+
+	// Verify original config was not modified
+	if config.Steps[1].Text != "{{username}}" {
+		t.Errorf("original config should not be modified")
+	}
+}
+
+func TestInjectDynamicValuesPartialMatch(t *testing.T) {
+	config := &Configuration{
+		Host: "localhost",
+		Port: 3270,
+		Steps: []Step{
+			{Type: "FillString", Text: "User: {{username}}, Pass: {{password}}"},
+		},
+	}
+
+	injection := map[string]string{
+		"{{username}}": "admin",
+		"{{password}}": "secret",
+	}
+
+	result := injectDynamicValues(config, injection)
+
+	expected := "User: admin, Pass: secret"
+	if result.Steps[0].Text != expected {
+		t.Errorf("expected '%s', got '%s'", expected, result.Steps[0].Text)
+	}
+}

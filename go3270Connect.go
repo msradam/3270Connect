@@ -1236,6 +1236,21 @@ func main() {
 			runConcurrentWorkflows(config, injectionConfig, configFile)
 
 		} else {
+			// Load and apply injection data if configured
+			if injectionConfig != "" {
+				if _, err := os.Stat(injectionConfig); err == nil {
+					injectData, loadErr := loadInjectionData(injectionConfig)
+					if loadErr != nil {
+						pterm.Error.Printf("Failed to load injection data: %v\n", loadErr)
+					} else if len(injectData) > 0 {
+						pterm.Info.Printf("Loaded %d injection entries from %s\n", len(injectData), injectionConfig)
+						// Use the first entry for single workflow execution
+						config = injectDynamicValues(config, injectData[0])
+					}
+				} else {
+					pterm.Warning.Printf("Injection file %s not found. Proceeding without injection.\n", injectionConfig)
+				}
+			}
 			runWorkflow(lastUsedPort, config)
 			printSingleWorkflowSummary(configFile, config)
 		}
@@ -3146,7 +3161,7 @@ func injectDynamicValues(config *Configuration, injection map[string]string) *Co
 	for i, step := range newConfig.Steps {
 		for placeholder, value := range injection {
 			if strings.Contains(step.Text, placeholder) {
-				newConfig.Steps[i].Text = strings.ReplaceAll(step.Text, placeholder, value)
+				newConfig.Steps[i].Text = strings.ReplaceAll(newConfig.Steps[i].Text, placeholder, value)
 			}
 		}
 	}
