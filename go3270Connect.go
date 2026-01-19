@@ -414,7 +414,6 @@ func logActiveWorkflowStatuses() {
 	for _, status := range statuses {
 		line := formatWorkflowStatusLine(status, time.Now())
 		pterm.Info.Printf(" - %s\n", line)
-		storeLog(line)
 	}
 }
 
@@ -1915,6 +1914,8 @@ func promptToContinueWaiting(gracePeriod time.Duration) bool {
 		pterm.Warning.Printf("Grace period of %s elapsed. Continue waiting? (y/N): ", formatSeconds(gracePeriod.Seconds()))
 		input, err := reader.ReadString('\n')
 		if err != nil {
+			pterm.Warning.Printf("Failed to read grace period response: %v\n", err)
+			storeLog(fmt.Sprintf("Failed to read grace period response: %v", err))
 			return false
 		}
 		input = strings.TrimSpace(strings.ToLower(input))
