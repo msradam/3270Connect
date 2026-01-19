@@ -36,7 +36,7 @@ import (
 	"github.com/shirou/gopsutil/mem"
 )
 
-const version = "1.8.1"
+const version = "1.8.2"
 
 const (
 	cpuHistoryLimit              = 120
