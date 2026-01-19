@@ -34,6 +34,30 @@ func TestRandomDurationDefaultsMaxToMin(t *testing.T) {
 	}
 }
 
+func TestCapDelayForDeadlineZeroDeadline(t *testing.T) {
+	delay := 1500 * time.Millisecond
+	if capped := capDelayForDeadline(delay, time.Time{}); capped != delay {
+		t.Fatalf("expected delay to remain %v, got %v", delay, capped)
+	}
+}
+
+func TestCapDelayForDeadlineElapsed(t *testing.T) {
+	delay := 2 * time.Second
+	deadline := time.Now().Add(-time.Second)
+	if capped := capDelayForDeadline(delay, deadline); capped != 0 {
+		t.Fatalf("expected delay to be capped to 0, got %v", capped)
+	}
+}
+
+func TestCapDelayForDeadlineShorterRemaining(t *testing.T) {
+	delay := 2 * time.Second
+	deadline := time.Now().Add(200 * time.Millisecond)
+	capped := capDelayForDeadline(delay, deadline)
+	if capped <= 0 || capped > 200*time.Millisecond {
+		t.Fatalf("expected capped delay between 0 and 200ms, got %v", capped)
+	}
+}
+
 func TestValidateConfigurationRejectsLegacyDelayAndHumanDelay(t *testing.T) {
 	cfg := Configuration{
 		Host:        "host",
