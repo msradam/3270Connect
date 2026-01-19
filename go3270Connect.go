@@ -845,7 +845,10 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration, ove
 			addError(err)
 		}
 		if delay > 0 {
-			time.Sleep(delay)
+			delay = capDelayForDeadline(delay, overallDeadline)
+			if delay > 0 {
+				time.Sleep(delay)
+			}
 		}
 	}
 
@@ -884,6 +887,20 @@ func secondsToDuration(seconds float64) time.Duration {
 		return 0
 	}
 	return time.Duration(seconds * float64(time.Second))
+}
+
+func capDelayForDeadline(delay time.Duration, deadline time.Time) time.Duration {
+	if delay <= 0 || deadline.IsZero() {
+		return delay
+	}
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return 0
+	}
+	if remaining < delay {
+		return remaining
+	}
+	return delay
 }
 
 func randomDuration(rangeConfig DelayRange, allowZero bool) (time.Duration, error) {
