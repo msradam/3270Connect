@@ -86,7 +86,6 @@ type Step struct {
 }
 
 var configPrinter *MessagePrinter
-var gracePromptReader = bufio.NewReader(os.Stdin)
 
 func runtimeEnvironmentString() string {
 	args := strings.Join(os.Args[1:], " ")
@@ -390,6 +389,9 @@ func snapshotWorkflowStatuses() []workflowStatus {
 		if status != nil {
 			statuses = append(statuses, *status)
 		}
+	}
+	if len(statuses) < 2 {
+		return statuses
 	}
 	sort.Slice(statuses, func(i, j int) bool {
 		return statuses[i].ScriptPort < statuses[j].ScriptPort
@@ -1694,16 +1696,16 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string, confi
 	} else {
 		pterm.Info.Printf("Grace period: waiting up to %s for %d workflow(s) to finish.\n", formatSeconds(gracePeriod.Seconds()), active)
 		logActiveWorkflowStatuses()
-		if waitForGraceCompletion(graceDone, gracePeriod) {
-		} else {
+		graceReader := bufio.NewReader(os.Stdin)
+		if !waitForCompletionWithGrace(graceDone, gracePeriod) {
 			active = getActiveWorkflows()
 			for active > 0 {
 				pterm.Warning.Printf("Grace period of %s elapsed; %d workflow(s) still running.\n", formatSeconds(gracePeriod.Seconds()), active)
 				logActiveWorkflowStatuses()
-				if !promptToContinueWaiting(gracePeriod) {
+				if !promptToContinueWaiting(graceReader, gracePeriod) {
 					connect3270.RequestShutdown()
 					pterm.Warning.Println("Shutdown requested. Waiting for workflows to stop...")
-					if waitForGracePeriod(graceDone, gracePeriod) {
+					if waitForGraceTimeout(graceDone, gracePeriod) {
 						pterm.Success.Println("All workflows stopped after shutdown request.")
 					} else {
 						pterm.Warning.Println("Grace period elapsed while waiting for workers; forcing shutdown.")
@@ -1711,7 +1713,7 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string, confi
 					break
 				}
 				pterm.Info.Printf("Continuing to wait up to %s for workflows to finish...\n", formatSeconds(gracePeriod.Seconds()))
-				if waitForGraceCompletion(graceDone, gracePeriod) {
+				if waitForCompletionWithGrace(graceDone, gracePeriod) {
 					break
 				}
 				active = getActiveWorkflows()
@@ -1890,7 +1892,7 @@ func infofIfBarsDisabled(format string, args ...interface{}) {
 	pterm.Info.Printf(format, args...)
 }
 
-func waitForGracePeriod(done <-chan struct{}, gracePeriod time.Duration) bool {
+func waitForGraceTimeout(done <-chan struct{}, gracePeriod time.Duration) bool {
 	if gracePeriod <= 0 {
 		<-done
 		return true
@@ -1903,8 +1905,8 @@ func waitForGracePeriod(done <-chan struct{}, gracePeriod time.Duration) bool {
 	}
 }
 
-func waitForGraceCompletion(done <-chan struct{}, gracePeriod time.Duration) bool {
-	if waitForGracePeriod(done, gracePeriod) {
+func waitForCompletionWithGrace(done <-chan struct{}, gracePeriod time.Duration) bool {
+	if waitForGraceTimeout(done, gracePeriod) {
 		logGracePeriodSuccess(gracePeriod)
 		return true
 	}
@@ -1915,10 +1917,10 @@ func logGracePeriodSuccess(gracePeriod time.Duration) {
 	pterm.Success.Printf("All workflows finished within the %s grace period.\n", formatSeconds(gracePeriod.Seconds()))
 }
 
-func promptToContinueWaiting(gracePeriod time.Duration) bool {
+func promptToContinueWaiting(reader *bufio.Reader, gracePeriod time.Duration) bool {
 	for {
 		pterm.Warning.Printf("Grace period of %s elapsed. Continue waiting? (y/N): ", formatSeconds(gracePeriod.Seconds()))
-		input, err := gracePromptReader.ReadString('\n')
+		input, err := reader.ReadString('\n')
 		if err != nil {
 			pterm.Warning.Printf("Failed to read grace period response: %v\n", err)
 			storeLog(fmt.Sprintf("Failed to read grace period response: %v", err))
