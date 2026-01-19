@@ -1690,19 +1690,15 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string, confi
 	gracePeriod := defaultGracePeriod
 	active := getActiveWorkflows()
 	if active == 0 {
-		waitForGracePeriod(graceDone, 0)
+		<-graceDone
 	} else {
 		pterm.Info.Printf("Grace period: waiting up to %s for %d workflow(s) to finish.\n", formatSeconds(gracePeriod.Seconds()), active)
 		logActiveWorkflowStatuses()
 		if waitForGracePeriod(graceDone, gracePeriod) {
-			pterm.Success.Printf("All workflows finished within the %s grace period.\n", formatSeconds(gracePeriod.Seconds()))
+			logGracePeriodSuccess(gracePeriod)
 		} else {
-			for {
-				active = getActiveWorkflows()
-				if active == 0 {
-					pterm.Success.Printf("All workflows finished within the %s grace period.\n", formatSeconds(gracePeriod.Seconds()))
-					break
-				}
+			active = getActiveWorkflows()
+			for active > 0 {
 				pterm.Warning.Printf("Grace period of %s elapsed; %d workflow(s) still running.\n", formatSeconds(gracePeriod.Seconds()), active)
 				logActiveWorkflowStatuses()
 				if !promptToContinueWaiting(gracePeriod) {
@@ -1717,7 +1713,12 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string, confi
 				}
 				pterm.Info.Printf("Continuing to wait up to %s for workflows to finish...\n", formatSeconds(gracePeriod.Seconds()))
 				if waitForGracePeriod(graceDone, gracePeriod) {
-					pterm.Success.Printf("All workflows finished within the %s grace period.\n", formatSeconds(gracePeriod.Seconds()))
+					logGracePeriodSuccess(gracePeriod)
+					break
+				}
+				active = getActiveWorkflows()
+				if active == 0 {
+					logGracePeriodSuccess(gracePeriod)
 					break
 				}
 			}
@@ -1902,6 +1903,10 @@ func waitForGracePeriod(done <-chan struct{}, gracePeriod time.Duration) bool {
 	case <-time.After(gracePeriod):
 		return false
 	}
+}
+
+func logGracePeriodSuccess(gracePeriod time.Duration) {
+	pterm.Success.Printf("All workflows finished within the %s grace period.\n", formatSeconds(gracePeriod.Seconds()))
 }
 
 func promptToContinueWaiting(gracePeriod time.Duration) bool {
