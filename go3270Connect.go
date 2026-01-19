@@ -86,6 +86,7 @@ type Step struct {
 }
 
 var configPrinter *MessagePrinter
+var gracePromptReader = bufio.NewReader(os.Stdin)
 
 func runtimeEnvironmentString() string {
 	args := strings.Join(os.Args[1:], " ")
@@ -1693,8 +1694,7 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string, confi
 	} else {
 		pterm.Info.Printf("Grace period: waiting up to %s for %d workflow(s) to finish.\n", formatSeconds(gracePeriod.Seconds()), active)
 		logActiveWorkflowStatuses()
-		if waitForGracePeriod(graceDone, gracePeriod) {
-			logGracePeriodSuccess(gracePeriod)
+		if waitForGraceCompletion(graceDone, gracePeriod) {
 		} else {
 			active = getActiveWorkflows()
 			for active > 0 {
@@ -1711,8 +1711,7 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string, confi
 					break
 				}
 				pterm.Info.Printf("Continuing to wait up to %s for workflows to finish...\n", formatSeconds(gracePeriod.Seconds()))
-				if waitForGracePeriod(graceDone, gracePeriod) {
-					logGracePeriodSuccess(gracePeriod)
+				if waitForGraceCompletion(graceDone, gracePeriod) {
 					break
 				}
 				active = getActiveWorkflows()
@@ -1904,15 +1903,22 @@ func waitForGracePeriod(done <-chan struct{}, gracePeriod time.Duration) bool {
 	}
 }
 
+func waitForGraceCompletion(done <-chan struct{}, gracePeriod time.Duration) bool {
+	if waitForGracePeriod(done, gracePeriod) {
+		logGracePeriodSuccess(gracePeriod)
+		return true
+	}
+	return false
+}
+
 func logGracePeriodSuccess(gracePeriod time.Duration) {
 	pterm.Success.Printf("All workflows finished within the %s grace period.\n", formatSeconds(gracePeriod.Seconds()))
 }
 
 func promptToContinueWaiting(gracePeriod time.Duration) bool {
-	reader := bufio.NewReader(os.Stdin)
 	for {
 		pterm.Warning.Printf("Grace period of %s elapsed. Continue waiting? (y/N): ", formatSeconds(gracePeriod.Seconds()))
-		input, err := reader.ReadString('\n')
+		input, err := gracePromptReader.ReadString('\n')
 		if err != nil {
 			pterm.Warning.Printf("Failed to read grace period response: %v\n", err)
 			storeLog(fmt.Sprintf("Failed to read grace period response: %v", err))
