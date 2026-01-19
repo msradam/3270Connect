@@ -59,6 +59,32 @@ func TestCapDelayForDeadlineShorterRemaining(t *testing.T) {
 	}
 }
 
+func TestFormatWorkflowStatusLine(t *testing.T) {
+	start := time.Date(2024, time.January, 1, 0, 0, 0, 0, time.UTC)
+	status := workflowStatus{
+		ScriptPort:  "5001",
+		Host:        "localhost",
+		Port:        3270,
+		CurrentStep: 2,
+		TotalSteps:  5,
+		StepType:    "FillString",
+		StartedAt:   start,
+	}
+	line := formatWorkflowStatusLine(status, start.Add(5*time.Second))
+	if !strings.Contains(line, "ScriptPort 5001") {
+		t.Fatalf("expected script port in line, got %s", line)
+	}
+	if !strings.Contains(line, "localhost:3270") {
+		t.Fatalf("expected host/port in line, got %s", line)
+	}
+	if !strings.Contains(line, "Step 2/5 (FillString)") {
+		t.Fatalf("expected step info in line, got %s", line)
+	}
+	if !strings.Contains(line, "Running 5s") {
+		t.Fatalf("expected running duration in line, got %s", line)
+	}
+}
+
 func TestValidateConfigurationRejectsLegacyDelayAndHumanDelay(t *testing.T) {
 	cfg := Configuration{
 		Host:        "host",

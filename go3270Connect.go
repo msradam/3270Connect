@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	crand "crypto/rand"
 	"embed"
@@ -45,6 +46,7 @@ const (
 	inMemoryLogLimit             = 500
 	dashboardCleanupInterval     = time.Minute
 	liveStatsHistoryLimit        = 12
+	defaultGracePeriod           = 30 * time.Second
 )
 
 var errorList []error
@@ -236,6 +238,18 @@ var dashboardPort int
 
 var activeWorkflows int
 var mutex sync.Mutex
+var workflowStatusMu sync.Mutex
+var workflowStatuses = make(map[string]*workflowStatus)
+
+type workflowStatus struct {
+	ScriptPort  string
+	Host        string
+	Port        int
+	CurrentStep int
+	TotalSteps  int
+	StepType    string
+	StartedAt   time.Time
+}
 
 var timingsMutex sync.Mutex
 var workflowDurations []float64
@@ -326,6 +340,81 @@ func appendLimitedString(slice *[]string, value string, limit int) {
 	}
 	if len(*slice) > limit {
 		*slice = (*slice)[len(*slice)-limit:]
+	}
+}
+
+func registerWorkflowStatus(scriptPort string, config *Configuration, totalSteps int) {
+	if scriptPort == "" || config == nil {
+		return
+	}
+	workflowStatusMu.Lock()
+	workflowStatuses[scriptPort] = &workflowStatus{
+		ScriptPort:  scriptPort,
+		Host:        config.Host,
+		Port:        config.Port,
+		CurrentStep: 0,
+		TotalSteps:  totalSteps,
+		StepType:    "starting",
+		StartedAt:   time.Now(),
+	}
+	workflowStatusMu.Unlock()
+}
+
+func updateWorkflowStatus(scriptPort string, stepIndex int, stepType string) {
+	if scriptPort == "" {
+		return
+	}
+	workflowStatusMu.Lock()
+	if status, ok := workflowStatuses[scriptPort]; ok {
+		status.CurrentStep = stepIndex
+		status.StepType = stepType
+	}
+	workflowStatusMu.Unlock()
+}
+
+func clearWorkflowStatus(scriptPort string) {
+	if scriptPort == "" {
+		return
+	}
+	workflowStatusMu.Lock()
+	delete(workflowStatuses, scriptPort)
+	workflowStatusMu.Unlock()
+}
+
+func snapshotWorkflowStatuses() []workflowStatus {
+	workflowStatusMu.Lock()
+	defer workflowStatusMu.Unlock()
+	statuses := make([]workflowStatus, 0, len(workflowStatuses))
+	for _, status := range workflowStatuses {
+		if status != nil {
+			statuses = append(statuses, *status)
+		}
+	}
+	sort.Slice(statuses, func(i, j int) bool {
+		return statuses[i].ScriptPort < statuses[j].ScriptPort
+	})
+	return statuses
+}
+
+func formatWorkflowStatusLine(status workflowStatus, now time.Time) string {
+	stepLabel := status.StepType
+	if status.TotalSteps > 0 {
+		stepLabel = fmt.Sprintf("%d/%d (%s)", status.CurrentStep, status.TotalSteps, status.StepType)
+	}
+	elapsed := now.Sub(status.StartedAt).Seconds()
+	return fmt.Sprintf("ScriptPort %s | %s:%d | Step %s | Running %s", status.ScriptPort, status.Host, status.Port, stepLabel, formatSeconds(elapsed))
+}
+
+func logActiveWorkflowStatuses() {
+	statuses := snapshotWorkflowStatuses()
+	if len(statuses) == 0 {
+		return
+	}
+	pterm.Info.Println("Active workflows still running:")
+	for _, status := range statuses {
+		line := formatWorkflowStatusLine(status, time.Now())
+		pterm.Info.Printf(" - %s\n", line)
+		storeLog(line)
 	}
 }
 
@@ -788,6 +877,9 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration, ove
 	} else {
 		steps = config.Steps
 	}
+	workflowKey := scriptPortLabel
+	registerWorkflowStatus(workflowKey, config, len(steps))
+	defer clearWorkflowStatus(workflowKey)
 
 	for idx, step := range steps {
 		if workflowFailed {
@@ -801,6 +893,7 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration, ove
 		if connect3270.ShutdownRequested() {
 			break
 		}
+		updateWorkflowStatus(workflowKey, idx+1, step.Type)
 		if idx > 0 {
 			delay, err := randomDuration(config.EveryStepDelay, true)
 			if err != nil {
@@ -1587,19 +1680,48 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string, confi
 	}
 
 	pterm.Success.Println("⏱️ Run duration complete. Waiting for current workflows to finish...")
-	connect3270.RequestShutdown()
 	close(jobs)
 
-	// Wait for workers with a grace period so we don't hang indefinitely.
 	graceDone := make(chan struct{})
 	go func() {
 		workerWG.Wait()
 		close(graceDone)
 	}()
-	select {
-	case <-graceDone:
-	case <-time.After(30 * time.Second):
-		pterm.Warning.Println("Grace period elapsed while waiting for workers; forcing shutdown.")
+	gracePeriod := defaultGracePeriod
+	active := getActiveWorkflows()
+	if active == 0 {
+		waitForGracePeriod(graceDone, 0)
+	} else {
+		pterm.Info.Printf("Grace period: waiting up to %s for %d workflow(s) to finish.\n", formatSeconds(gracePeriod.Seconds()), active)
+		logActiveWorkflowStatuses()
+		if waitForGracePeriod(graceDone, gracePeriod) {
+			pterm.Success.Printf("All workflows finished within the %s grace period.\n", formatSeconds(gracePeriod.Seconds()))
+		} else {
+			for {
+				active = getActiveWorkflows()
+				if active == 0 {
+					pterm.Success.Printf("All workflows finished within the %s grace period.\n", formatSeconds(gracePeriod.Seconds()))
+					break
+				}
+				pterm.Warning.Printf("Grace period of %s elapsed; %d workflow(s) still running.\n", formatSeconds(gracePeriod.Seconds()), active)
+				logActiveWorkflowStatuses()
+				if !promptToContinueWaiting(gracePeriod) {
+					connect3270.RequestShutdown()
+					pterm.Warning.Println("Shutdown requested. Waiting for workflows to stop...")
+					if waitForGracePeriod(graceDone, gracePeriod) {
+						pterm.Success.Println("All workflows stopped after shutdown request.")
+					} else {
+						pterm.Warning.Println("Grace period elapsed while waiting for workers; forcing shutdown.")
+					}
+					break
+				}
+				pterm.Info.Printf("Continuing to wait up to %s for workflows to finish...\n", formatSeconds(gracePeriod.Seconds()))
+				if waitForGracePeriod(graceDone, gracePeriod) {
+					pterm.Success.Printf("All workflows finished within the %s grace period.\n", formatSeconds(gracePeriod.Seconds()))
+					break
+				}
+			}
+		}
 	}
 	storeLog("All workflows completed after runtimeDuration ended.")
 
@@ -1767,6 +1889,39 @@ func infofIfBarsDisabled(format string, args ...interface{}) {
 		return
 	}
 	pterm.Info.Printf(format, args...)
+}
+
+func waitForGracePeriod(done <-chan struct{}, gracePeriod time.Duration) bool {
+	if gracePeriod <= 0 {
+		<-done
+		return true
+	}
+	select {
+	case <-done:
+		return true
+	case <-time.After(gracePeriod):
+		return false
+	}
+}
+
+func promptToContinueWaiting(gracePeriod time.Duration) bool {
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		pterm.Warning.Printf("Grace period of %s elapsed. Continue waiting? (y/N): ", formatSeconds(gracePeriod.Seconds()))
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			return false
+		}
+		input = strings.TrimSpace(strings.ToLower(input))
+		switch input {
+		case "y", "yes":
+			return true
+		case "", "n", "no":
+			return false
+		default:
+			pterm.Info.Println("Please enter y or n.")
+		}
+	}
 }
 
 func printSingleWorkflowSummary(configPath string, config *Configuration) {
