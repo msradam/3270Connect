@@ -2,6 +2,7 @@ package main
 
 import (
 	"math/rand"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -128,5 +129,83 @@ func TestInjectDynamicValuesPartialMatch(t *testing.T) {
 	expected := "User: admin, Pass: secret"
 	if result.Steps[0].Text != expected {
 		t.Errorf("expected '%s', got '%s'", expected, result.Steps[0].Text)
+	}
+}
+
+func TestInjectDynamicValuesWithUTF8Characters(t *testing.T) {
+	config := &Configuration{
+		Host: "localhost",
+		Port: 3270,
+		Steps: []Step{
+			{Type: "FillString", Text: "{{firstname}}"},
+			{Type: "FillString", Text: "{{lastname}}"},
+		},
+	}
+
+	injection := map[string]string{
+		"{{firstname}}": "SÄR",
+		"{{lastname}}":  "0218",
+	}
+
+	result := injectDynamicValues(config, injection)
+
+	// Verify UTF-8 characters (Swedish Ä) are preserved
+	if result.Steps[0].Text != "SÄR" {
+		t.Errorf("expected firstname to be 'SÄR', got '%s'", result.Steps[0].Text)
+	}
+	if result.Steps[1].Text != "0218" {
+		t.Errorf("expected lastname to be '0218', got '%s'", result.Steps[1].Text)
+	}
+
+	// Verify original config was not modified
+	if config.Steps[0].Text != "{{firstname}}" {
+		t.Errorf("original config should not be modified")
+	}
+}
+
+func TestLoadInjectionDataWithUTF8Characters(t *testing.T) {
+	// Create a temporary JSON file with UTF-8 characters
+	tmpfile, err := os.CreateTemp("", "injection-utf8-*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	// Write JSON content with Swedish characters
+	jsonContent := `[
+		{
+			"{{firstname}}": "SÄR",
+			"{{lastname}}": "0218"
+		},
+		{
+			"{{firstname}}": "SÖR",
+			"{{lastname}}": "0219"
+		}
+	]`
+
+	if _, err := tmpfile.Write([]byte(jsonContent)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Load the injection data
+	data, err := loadInjectionData(tmpfile.Name())
+	if err != nil {
+		t.Fatalf("Failed to load injection data: %v", err)
+	}
+
+	// Verify the data was loaded correctly
+	if len(data) != 2 {
+		t.Errorf("expected 2 entries, got %d", len(data))
+	}
+
+	// Verify UTF-8 characters are preserved
+	if data[0]["{{firstname}}"] != "SÄR" {
+		t.Errorf("expected first entry firstname to be 'SÄR', got '%s'", data[0]["{{firstname}}"])
+	}
+	if data[1]["{{firstname}}"] != "SÖR" {
+		t.Errorf("expected second entry firstname to be 'SÖR', got '%s'", data[1]["{{firstname}}"])
 	}
 }

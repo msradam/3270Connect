@@ -545,9 +545,9 @@ func (e *Emulator) createApp() error {
 	}
 
 	if Headless {
-		cmd = exec.Command(binaryFilePath, "-scriptport", e.ScriptPort, "-xrm", resourceString, "-model", modelType, e.hostname())
+		cmd = exec.Command(binaryFilePath, "-utf8", "-scriptport", e.ScriptPort, "-xrm", resourceString, "-model", modelType, e.hostname())
 	} else {
-		cmd = exec.Command(binaryFilePath, "-xrm", resourceString, "-scriptport", e.ScriptPort, "-model", modelType, e.hostname())
+		cmd = exec.Command(binaryFilePath, "-utf8", "-xrm", resourceString, "-scriptport", e.ScriptPort, "-model", modelType, e.hostname())
 	}
 
 	if Verbose {
