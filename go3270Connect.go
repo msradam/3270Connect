@@ -37,7 +37,7 @@ import (
 	"github.com/shirou/gopsutil/mem"
 )
 
-const version = "1.8.2"
+const version = "1.8.3"
 
 const (
 	cpuHistoryLimit              = 120
@@ -399,6 +399,20 @@ func snapshotWorkflowStatuses() []workflowStatus {
 	return statuses
 }
 
+func splitWorkflowStatuses(statuses []workflowStatus) (connectOnly []workflowStatus, nonConnect []workflowStatus) {
+	if len(statuses) == 0 {
+		return nil, nil
+	}
+	for _, status := range statuses {
+		if status.StepType == "Connect" {
+			connectOnly = append(connectOnly, status)
+			continue
+		}
+		nonConnect = append(nonConnect, status)
+	}
+	return connectOnly, nonConnect
+}
+
 func formatWorkflowStatusLine(status workflowStatus, now time.Time) string {
 	stepLabel := status.StepType
 	if status.TotalSteps > 0 {
@@ -410,13 +424,17 @@ func formatWorkflowStatusLine(status workflowStatus, now time.Time) string {
 
 func logActiveWorkflowStatuses() {
 	statuses := snapshotWorkflowStatuses()
+	logWorkflowStatuses(statuses)
+}
+
+func logWorkflowStatuses(statuses []workflowStatus) {
 	if len(statuses) == 0 {
 		return
 	}
 	pterm.Info.Println("Active workflows still running:")
 	for _, status := range statuses {
 		line := formatWorkflowStatusLine(status, time.Now())
-		pterm.Info.Printf(" - %s\n", line)
+		pterm.Info.Printf(" - %s", line)
 	}
 }
 
@@ -949,6 +967,9 @@ func runWorkflowWithEmulator(e *connect3270.Emulator, config *Configuration, ove
 
 	duration := time.Since(startTime).Seconds()
 	recordWorkflowDuration(duration)
+	if connect3270.ShutdownRequested() {
+		return nil
+	}
 
 	if workflowFailed {
 		atomic.AddInt64(&totalWorkflowsFailed, 1)
@@ -1441,7 +1462,7 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string, confi
 		workerCount = 1
 	}
 	deadline := overallStart.Add(time.Duration(runtimeDuration) * time.Second)
-	jobs := make(chan *Configuration)
+	jobs := make(chan *Configuration, workerCount)
 	var workerWG sync.WaitGroup
 	for i := 0; i < workerCount; i++ {
 		workerWG.Add(1)
@@ -1608,7 +1629,6 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string, confi
 		rampDelay = time.Second
 	}
 
-	firstBatch := true
 	stoppedScheduling := false
 	for time.Now().Before(deadline) {
 		if deadline.Sub(time.Now()) <= rampDelay {
@@ -1626,8 +1646,13 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string, confi
 		for startedThisBatch < workflowsToStart && time.Now().Before(deadline) {
 			cfg := injectDynamicValues(config, injectData[injectionCursor])
 			injectionCursor = (injectionCursor + 1) % len(injectData)
-			jobs <- cfg
-			startedThisBatch++
+			select {
+			case jobs <- cfg:
+				startedThisBatch++
+			default:
+				// Avoid blocking so we can honor the runtime deadline.
+				startedThisBatch = workflowsToStart
+			}
 		}
 
 		active := getActiveWorkflows()
@@ -1643,18 +1668,14 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string, confi
 			storeLog(combinedMsg)
 		}
 
-		if !firstBatch {
-			time.Sleep(rampDelay)
-		} else {
-			firstBatch = false
-		}
+		time.Sleep(rampDelay)
 	}
 	if stoppedScheduling {
 		remain := deadline.Sub(time.Now())
 		if remain < 0 {
 			remain = 0
 		}
-		msg := fmt.Sprintf("Stopped scheduling new workflows to honor deadline (%.1fs remaining). Increase runtime or lower ramp-up to reach target concurrency.", remain.Seconds())
+		msg := fmt.Sprintf("Stopped scheduling new workflows to honor deadline (%.1fs remaining).", remain.Seconds())
 		infoIfBarsDisabled(msg)
 		storeLog(msg)
 	}
@@ -1690,38 +1711,82 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string, confi
 		close(graceDone)
 	}()
 	gracePeriod := defaultGracePeriod
+	connectOnlyEndedAtRunEnd := 0
+	connectOnlyMarked := false
+	graceSucceeded := false
 	active := getActiveWorkflows()
 	if active == 0 {
 		<-graceDone
 	} else {
-		pterm.Info.Printf("Grace period: waiting up to %s for %d workflow(s) to finish.\n", formatSeconds(gracePeriod.Seconds()), active)
-		logActiveWorkflowStatuses()
-		graceReader := bufio.NewReader(os.Stdin)
-		if !waitForCompletionWithGrace(graceDone, gracePeriod) {
-			active = getActiveWorkflows()
-			for active > 0 {
-				pterm.Warning.Printf("Grace period of %s elapsed; %d workflow(s) still running.\n", formatSeconds(gracePeriod.Seconds()), active)
-				logActiveWorkflowStatuses()
-				if !promptToContinueWaiting(graceReader, gracePeriod) {
-					connect3270.RequestShutdown()
-					pterm.Warning.Println("Shutdown requested. Waiting for workflows to stop...")
-					if waitForGraceTimeout(graceDone, gracePeriod) {
-						pterm.Success.Println("All workflows stopped after shutdown request.")
-					} else {
-						pterm.Warning.Println("Grace period elapsed while waiting for workers; forcing shutdown.")
-					}
-					break
-				}
-				pterm.Info.Printf("Continuing to wait up to %s for workflows to finish...\n", formatSeconds(gracePeriod.Seconds()))
-				if waitForCompletionWithGrace(graceDone, gracePeriod) {
-					break
-				}
-				active = getActiveWorkflows()
-				if active == 0 {
-					logGracePeriodSuccess(gracePeriod)
-					break
-				}
+		statuses := snapshotWorkflowStatuses()
+		connectOnly, nonConnect := splitWorkflowStatuses(statuses)
+		if len(nonConnect) == 0 {
+			if !connectOnlyMarked {
+				connectOnlyEndedAtRunEnd = len(connectOnly)
+				connectOnlyMarked = true
 			}
+			if showConnectionErrors {
+				pterm.Warning.Printf("Ending %d workflow(s) still connecting at run end.", len(connectOnly))
+				logWorkflowStatuses(connectOnly)
+			}
+			connect3270.RequestShutdown()
+			_ = waitForGraceTimeout(graceDone, gracePeriod)
+		} else {
+			pterm.Info.Printf("Grace period: waiting up to %s for %d workflow(s) to finish.", formatSeconds(gracePeriod.Seconds()), len(nonConnect))
+			graceReader := bufio.NewReader(os.Stdin)
+			if !waitForNonConnectCompletion(gracePeriod) {
+				_, nonConnect = splitWorkflowStatuses(snapshotWorkflowStatuses())
+				for len(nonConnect) > 0 {
+					pterm.Warning.Printf("Grace period of %s elapsed; %d workflow(s) still running.", formatSeconds(gracePeriod.Seconds()), len(nonConnect))
+					logWorkflowStatuses(nonConnect)
+					if !promptToContinueWaiting(graceReader, gracePeriod) {
+						connect3270.RequestShutdown()
+						pterm.Warning.Println("Shutdown requested. Waiting for workflows to stop...")
+						if waitForGraceTimeout(graceDone, gracePeriod) {
+							pterm.Success.Println("All workflows stopped after shutdown request.")
+						} else {
+							pterm.Warning.Println("Grace period elapsed while waiting for workers; forcing shutdown.")
+						}
+						break
+					}
+					pterm.Info.Printf("Continuing to wait up to %s for workflows to finish...", formatSeconds(gracePeriod.Seconds()))
+					if waitForNonConnectCompletion(gracePeriod) {
+						logGracePeriodSuccess(gracePeriod)
+						graceSucceeded = true
+						waitForWorkersSettle(graceDone)
+						break
+					}
+					_, nonConnect = splitWorkflowStatuses(snapshotWorkflowStatuses())
+					if len(nonConnect) == 0 {
+						logGracePeriodSuccess(gracePeriod)
+						graceSucceeded = true
+						waitForWorkersSettle(graceDone)
+						break
+					}
+				}
+			} else {
+				logGracePeriodSuccess(gracePeriod)
+				graceSucceeded = true
+				waitForWorkersSettle(graceDone)
+			}
+		}
+
+		statuses = snapshotWorkflowStatuses()
+		connectOnly, nonConnect = splitWorkflowStatuses(statuses)
+		if len(nonConnect) == 0 && len(connectOnly) > 0 {
+			if !connectOnlyMarked {
+				connectOnlyEndedAtRunEnd = len(connectOnly)
+				connectOnlyMarked = true
+			}
+			if showConnectionErrors {
+				pterm.Warning.Printf("Ending %d workflow(s) still connecting at run end.\n", len(connectOnly))
+				logWorkflowStatuses(connectOnly)
+			}
+			connect3270.RequestShutdown()
+			_ = waitForGraceTimeout(graceDone, gracePeriod)
+		}
+		if len(nonConnect) > 0 {
+			_ = waitForGraceTimeout(graceDone, gracePeriod)
 		}
 	}
 	storeLog("All workflows completed after runtimeDuration ended.")
@@ -1733,6 +1798,34 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string, confi
 	finalStarted := atomic.LoadInt64(&totalWorkflowsStarted)
 	finalCompleted := atomic.LoadInt64(&totalWorkflowsCompleted)
 	finalFailed := atomic.LoadInt64(&totalWorkflowsFailed)
+	statusSnapshot := snapshotWorkflowStatuses()
+	activeFromStatus := len(statusSnapshot)
+	connectOnlyExcluded := connectOnlyEndedAtRunEnd
+	connectOnlyNow, _ := splitWorkflowStatuses(statusSnapshot)
+	if len(connectOnlyNow) > connectOnlyExcluded {
+		connectOnlyExcluded = len(connectOnlyNow)
+	}
+	adjustedStarted := finalStarted - int64(connectOnlyExcluded)
+	if adjustedStarted < 0 {
+		adjustedStarted = 0
+	}
+	if activeFromStatus > 0 {
+		finalActive = activeFromStatus
+	}
+	adjustedActive := finalActive - connectOnlyExcluded
+	if adjustedActive < 0 {
+		adjustedActive = 0
+	}
+	if graceSucceeded && !connect3270.ShutdownRequested() {
+		adjustedActive = 0
+	}
+	adjustedCompleted := finalCompleted
+	if !connect3270.ShutdownRequested() && activeFromStatus == 0 {
+		expectedCompleted := adjustedStarted - finalFailed
+		if expectedCompleted > adjustedCompleted {
+			adjustedCompleted = expectedCompleted
+		}
+	}
 
 	clear()
 	printBanner()
@@ -1747,16 +1840,16 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string, confi
 		WithLeftAlignment().
 		WithData(TableData{
 			{"Metric", "Value", "Status"},
-			{"Total Workflows Started", fmt.Sprintf("%d", finalStarted), "🚀 Launch Party"},
-			{"Total Workflows Completed", fmt.Sprintf("%d", finalCompleted), "🏁 Victory Lap"},
+			{"Total Workflows Started", fmt.Sprintf("%d", adjustedStarted), "🚀 Launch Party"},
+			{"Total Workflows Completed", fmt.Sprintf("%d", adjustedCompleted), "🏁 Victory Lap"},
 			{"Total Workflows Failed", fmt.Sprintf("%d", finalFailed), func() string {
 				if finalFailed > 0 {
 					return "💥 Gremlins"
 				}
 				return "🧼 Squeaky"
 			}()},
-			{"Final Active vUsers", fmt.Sprintf("%d/%d", finalActive, workerCount), func() string {
-				if finalActive > 0 {
+			{"Final Active vUsers", fmt.Sprintf("%d/%d", adjustedActive, workerCount), func() string {
+				if adjustedActive > 0 {
 					return "🐝 Still Buzzing"
 				}
 				return "🧘 All Zen"
@@ -1767,7 +1860,7 @@ func runConcurrentWorkflows(config *Configuration, injectionConfig string, confi
 			{"Run Duration", fmt.Sprintf("%ds", elapsed), "🛎️ Completed"},
 		}).Render()
 
-	summaryText := generateSummaryText(configPath, config, finalStarted, finalCompleted, finalFailed, finalActive, avgCPU, avgMem, avgWorkflowTime, float64(elapsed))
+	summaryText := generateSummaryText(configPath, config, adjustedStarted, adjustedCompleted, finalFailed, adjustedActive, avgCPU, avgMem, avgWorkflowTime, float64(elapsed))
 	summaryFile := filepath.Join("logs", fmt.Sprintf("summary_%d.txt", os.Getpid()))
 	if err := os.WriteFile(summaryFile, []byte(summaryText), 0644); err != nil {
 		pterm.Warning.Printf("Failed to save summary: %v\n", err)
@@ -1911,6 +2004,27 @@ func waitForCompletionWithGrace(done <-chan struct{}, gracePeriod time.Duration)
 		return true
 	}
 	return false
+}
+
+func waitForWorkersSettle(done <-chan struct{}) {
+	_ = waitForGraceTimeout(done, 2*time.Second)
+}
+
+func waitForNonConnectCompletion(gracePeriod time.Duration) bool {
+	if gracePeriod < 0 {
+		gracePeriod = 0
+	}
+	deadline := time.Now().Add(gracePeriod)
+	for {
+		_, nonConnect := splitWorkflowStatuses(snapshotWorkflowStatuses())
+		if len(nonConnect) == 0 {
+			return true
+		}
+		if gracePeriod > 0 && time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 }
 
 func logGracePeriodSuccess(gracePeriod time.Duration) {
